@@ -144,37 +144,39 @@ class _ServiceTileState extends State<ServiceTile> with WidgetsBindingObserver {
       children: [
         ListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          leading: Stack(
-            children: [
-              widget.iconBytes != null
-                  ? CircleAvatar(
-                      backgroundImage: MemoryImage(widget.iconBytes!),
-                      backgroundColor: Colors.transparent,
-                    )
-                  : CircleAvatar(
-                      backgroundColor: theme.colorScheme.primaryContainer,
-                      child: Text(
-                        widget.service.displayLabel.isNotEmpty
-                            ? widget.service.displayLabel[0].toUpperCase()
-                            : '?',
-                        style: TextStyle(color: theme.colorScheme.onPrimaryContainer),
+          leading: widget.showLeading
+              ? Stack(
+                  children: [
+                    widget.iconBytes != null
+                        ? CircleAvatar(
+                            backgroundImage: MemoryImage(widget.iconBytes!),
+                            backgroundColor: Colors.transparent,
+                          )
+                        : CircleAvatar(
+                            backgroundColor: theme.colorScheme.primaryContainer,
+                            child: Text(
+                              widget.service.displayLabel.isNotEmpty
+                                  ? widget.service.displayLabel[0].toUpperCase()
+                                  : '?',
+                              style: TextStyle(color: theme.colorScheme.onPrimaryContainer),
+                            ),
+                          ),
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: statusColor,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: theme.colorScheme.surface, width: 2),
+                        ),
                       ),
                     ),
-              Positioned(
-                right: 0,
-                bottom: 0,
-                child: Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    color: statusColor,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: theme.colorScheme.surface, width: 2),
-                  ),
-                ),
-              ),
-            ],
-          ),
+                  ],
+                )
+              : null,
           title: Text(
             widget.service.displayLabel,
             style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),

@@ -44,6 +44,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _batteryExempt = true;
   bool _useAppColors = false;
   bool _loading = true;
+  final _expandedGroups = <String, bool>{};
 
   @override
   void initState() {
@@ -288,9 +289,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       SnackBar(content: Text('Restarting ${service.displayLabel}...')),
     );
     await _log(service, AuditEventType.restartAttempted, AuditTrigger.manual);
-    final ok = await _manager.startService(service);
+    final (ok, detail) = await _manager.startService(service);
     await _log(service, ok ? AuditEventType.restartSuccess : AuditEventType.restartFailed,
-        AuditTrigger.manual);
+      AuditTrigger.manual, notes: detail);
     final updated = service.copyWith(
       lastRestarted: ok ? DateTime.now() : service.lastRestarted,
       wasRunning: ok ? true : service.wasRunning,
@@ -333,11 +334,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // Service is stopped — log and attempt restart
     await _log(service, AuditEventType.detectedStopped, AuditTrigger.automatic);
     await _log(service, AuditEventType.restartAttempted, AuditTrigger.automatic);
-    final ok = await _manager.startService(service);
+    final (ok, detail) = await _manager.startService(service);
 
     if (!ok) {
       // Start command itself failed — retry in 30 s
-      await _log(service, AuditEventType.restartFailed, AuditTrigger.automatic);
+      await _log(service, AuditEventType.restartFailed, AuditTrigger.automatic, notes: detail);
       await _storage.updateService(service.copyWith(
         wasRunning: false,
         lastChecked: _retryTime(service),
@@ -351,7 +352,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final nowRunning = await _manager.isServiceRunning(service);
 
     if (nowRunning == true) {
-      await _log(service, AuditEventType.restartSuccess, AuditTrigger.automatic);
+      await _log(service, AuditEventType.restartSuccess, AuditTrigger.automatic, notes: detail);
       await _storage.updateService(service.copyWith(
         wasRunning: true,
         lastChecked: DateTime.now(),
@@ -359,7 +360,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ));
     } else {
       // Still not confirmed running — retry in 30 s, keep red status
-      await _log(service, AuditEventType.restartFailed, AuditTrigger.automatic);
+      await _log(service, AuditEventType.restartFailed, AuditTrigger.automatic, notes: detail);
       await _storage.updateService(service.copyWith(
         wasRunning: false,
         lastChecked: _retryTime(service),
@@ -381,9 +382,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
     for (final s in enabled) {
       await _log(s, AuditEventType.restartAttempted, AuditTrigger.manual);
-      final ok = await _manager.startService(s);
+      final (ok, detail) = await _manager.startService(s);
       await _log(s, ok ? AuditEventType.restartSuccess : AuditEventType.restartFailed,
-          AuditTrigger.manual);
+          AuditTrigger.manual, notes: detail);
       if (ok) {
         await _storage.updateService(s.copyWith(lastRestarted: DateTime.now(), wasRunning: true));
       }
@@ -599,34 +600,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return result;
   }
 
-  Widget _buildAppIcon(String packageName, {double radius = 20, Color? bgColor}) {
-    final bytes = _iconCache[packageName];
-    if (bytes != null) {
-      return CircleAvatar(
-        radius: radius,
-        backgroundImage: MemoryImage(bytes),
-        backgroundColor: Colors.transparent,
-      );
-    }
-    return CircleAvatar(
-      radius: radius,
-      backgroundColor: bgColor ?? Theme.of(context).colorScheme.primaryContainer,
-      child: Text(
-        packageName.isNotEmpty ? packageName.split('.').last[0].toUpperCase() : '?',
-        style: TextStyle(
-          color: bgColor != null
-              ? (ThemeData.estimateBrightnessForColor(bgColor) == Brightness.dark
-                  ? Colors.white70
-                  : Colors.black54)
-              : Theme.of(context).colorScheme.onPrimaryContainer,
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Service Keeper'),
@@ -665,104 +640,96 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ? _buildEmptyState()
                     : RefreshIndicator(
                         onRefresh: _refreshStatuses,
-                        child: ListView(
-                          children: _groupedServices().map((group) {
-                            final (pkg, appName, services) = group;
-                            final allEnabled = services.every((s) => s.enabled);
-                            final anyIssue =
-                                services.any((s) => s.wasRunning == false && s.enabled);
-
-                            // App color theming
-                            final appColor = _useAppColors ? _appColorCache[pkg] : null;
-                            final Color? headerFg = appColor == null
-                                ? null
-                                : (ThemeData.estimateBrightnessForColor(appColor) ==
-                                        Brightness.dark
-                                    ? Colors.white
-                                    : Colors.black87);
-                            final Color? bodyBg = appColor == null
-                                ? null
-                                : Color.alphaBlend(
-                                    appColor.withValues(alpha: isDark ? 0.22 : 0.10),
-                                    isDark ? const Color(0xFF1C1C1C) : Colors.white,
-                                  );
-
-                            return Card(
-                              margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                              clipBehavior: Clip.antiAlias,
-                              child: ExpansionTile(
-                                key: PageStorageKey(pkg),
-                                initiallyExpanded: false,
-                                collapsedBackgroundColor: appColor,
-                                backgroundColor: appColor,
-                                collapsedIconColor: headerFg,
-                                iconColor: headerFg,
-                                leading: _buildAppIcon(pkg, bgColor: appColor),
-                                title: Text(appName,
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      color: headerFg,
-                                    )),
-                                subtitle: Text(
-                                  '${services.length} service${services.length == 1 ? '' : 's'} monitored',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: headerFg?.withValues(alpha: 0.75) ??
-                                        Theme.of(context).colorScheme.onSurfaceVariant,
-                                  ),
+                        child: CustomScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          slivers: [
+                            for (final (pkg, appName, services) in _groupedServices()) ...[
+                              SliverPersistentHeader(
+                                pinned: true,
+                                delegate: _GroupHeaderDelegate(
+                                  packageName: pkg,
+                                  appName: appName,
+                                  iconBytes: _iconCache[pkg],
+                                  services: services,
+                                  expanded: _expandedGroups[pkg] ?? false,
+                                  appColor: _useAppColors ? _appColorCache[pkg] : null,
+                                  onTap: () => setState(() {
+                                    _expandedGroups[pkg] = !(_expandedGroups[pkg] ?? false);
+                                  }),
+                                  onRestartAll: () => _restartAll(services),
+                                  onViewHistory: () => _viewAppHistory(pkg, appName),
                                 ),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (anyIssue)
-                                      Icon(Icons.warning_amber,
-                                          color: appColor != null ? headerFg : Colors.orange,
-                                          size: 18),
-                                    if (!anyIssue && allEnabled)
-                                      Icon(Icons.check_circle,
-                                          color: appColor != null ? headerFg : Colors.green,
-                                          size: 18),
-                                    PopupMenuButton<String>(
-                                      icon: Icon(Icons.more_vert, size: 20, color: headerFg),
-                                      padding: EdgeInsets.zero,
-                                      onSelected: (v) {
-                                        if (v == 'restart_all') _restartAll(services);
-                                        if (v == 'view_history') _viewAppHistory(pkg, appName);
-                                      },
-                                      itemBuilder: (_) => const [
-                                        PopupMenuItem(
-                                            value: 'restart_all', child: Text('Restart all')),
-                                        PopupMenuItem(
-                                            value: 'view_history', child: Text('View history')),
-                                      ],
-                                    ),
-                                    Icon(Icons.expand_more, color: headerFg),
-                                  ],
-                                ),
-                                children: services
-                                    .map((s) => Container(
-                                          color: bodyBg,
-                                          child: ServiceTile(
-                                            service: s,
-                                            iconBytes: _iconCache[s.packageName],
-                                            accentColor: appColor,
-                                            onToggle: () => _toggleService(s),
-                                            onConfigure: () => _configureService(s),
-                                            onRemove: () => _removeService(s),
-                                            onRestartNow: () => _restartNow(s),
-                                            onCheckDue: () => _checkDue(s),
-                                            onViewHistory: () => Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (_) => ServiceAuditScreen(service: s),
-                                              ),
+                              ),
+                              if (_expandedGroups[pkg] == true)
+                                SliverList(
+                                  delegate: SliverChildBuilderDelegate(
+                                    (ctx, i) {
+                                      final s = services[i];
+                                      final tileTheme = Theme.of(ctx);
+                                      final isLast = i == services.length - 1;
+                                      final appColor =
+                                          _useAppColors ? _appColorCache[pkg] : null;
+                                      final darkMode =
+                                          tileTheme.brightness == Brightness.dark;
+                                      final bodyBg = appColor == null
+                                          ? tileTheme.colorScheme.surfaceContainerLow
+                                          : Color.alphaBlend(
+                                              appColor.withValues(
+                                                  alpha: darkMode ? 0.22 : 0.10),
+                                              darkMode
+                                                  ? const Color(0xFF1C1C1C)
+                                                  : Colors.white,
+                                            );
+                                      return Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                                        child: ClipRRect(
+                                          borderRadius: isLast
+                                              ? const BorderRadius.only(
+                                                  bottomLeft: Radius.circular(12),
+                                                  bottomRight: Radius.circular(12),
+                                                )
+                                              : BorderRadius.zero,
+                                          child: ColoredBox(
+                                            color: bodyBg,
+                                            child: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                ServiceTile(
+                                                  service: s,
+                                                  showLeading: false,
+                                                  accentColor: appColor,
+                                                  onToggle: () => _toggleService(s),
+                                                  onConfigure: () => _configureService(s),
+                                                  onRemove: () => _removeService(s),
+                                                  onRestartNow: () => _restartNow(s),
+                                                  onCheckDue: () => _checkDue(s),
+                                                  onViewHistory: () => Navigator.push(
+                                                    context,
+                                                    MaterialPageRoute(
+                                                      builder: (_) =>
+                                                          ServiceAuditScreen(service: s),
+                                                    ),
+                                                  ),
+                                                ),
+                                                if (!isLast)
+                                                  Divider(
+                                                    height: 1,
+                                                    thickness: 1,
+                                                    color: tileTheme.colorScheme.outlineVariant
+                                                        .withValues(alpha: 0.5),
+                                                  ),
+                                              ],
                                             ),
                                           ),
-                                        ))
-                                    .toList(),
-                              ),
-                            );
-                          }).toList(),
+                                        ),
+                                      );
+                                    },
+                                    childCount: services.length,
+                                  ),
+                                ),
+                            ],
+                            const SliverToBoxAdapter(child: SizedBox(height: 80)),
+                          ],
                         ),
                       ),
               ),
@@ -800,4 +767,162 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
     );
   }
+}
+
+class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final String packageName;
+  final String appName;
+  final Uint8List? iconBytes;
+  final List<MonitoredService> services;
+  final bool expanded;
+  final Color? appColor;
+  final VoidCallback onTap;
+  final VoidCallback onRestartAll;
+  final VoidCallback onViewHistory;
+
+  const _GroupHeaderDelegate({
+    required this.packageName,
+    required this.appName,
+    this.iconBytes,
+    required this.services,
+    required this.expanded,
+    this.appColor,
+    required this.onTap,
+    required this.onRestartAll,
+    required this.onViewHistory,
+  });
+
+  @override
+  double get minExtent => 80;
+  @override
+  double get maxExtent => 80;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    final theme = Theme.of(context);
+    final anyIssue = services.any((s) => s.wasRunning == false && s.enabled);
+    final allEnabled = services.every((s) => s.enabled);
+
+    final Color? headerFg = appColor == null
+        ? null
+        : (ThemeData.estimateBrightnessForColor(appColor!) == Brightness.dark
+            ? Colors.white
+            : Colors.black87);
+
+    final bgColor = appColor ?? theme.colorScheme.surfaceContainerHighest;
+    final fg = headerFg ?? theme.colorScheme.onSurface;
+
+    final cardRadius = BorderRadius.only(
+      topLeft: const Radius.circular(12),
+      topRight: const Radius.circular(12),
+      bottomLeft: expanded ? Radius.zero : const Radius.circular(12),
+      bottomRight: expanded ? Radius.zero : const Radius.circular(12),
+    );
+
+    final Widget icon;
+    if (iconBytes != null) {
+      icon = CircleAvatar(
+        radius: 20,
+        backgroundImage: MemoryImage(iconBytes!),
+        backgroundColor: Colors.transparent,
+      );
+    } else {
+      icon = CircleAvatar(
+        radius: 20,
+        backgroundColor: appColor ?? theme.colorScheme.primaryContainer,
+        child: Text(
+          packageName.isNotEmpty ? packageName.split('.').last[0].toUpperCase() : '?',
+          style: TextStyle(color: headerFg ?? theme.colorScheme.onPrimaryContainer),
+        ),
+      );
+    }
+
+    return ColoredBox(
+      color: theme.colorScheme.surface,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        child: Material(
+          color: bgColor,
+          borderRadius: cardRadius,
+          elevation: overlapsContent ? 4 : 1,
+          shadowColor: Colors.black26,
+          child: InkWell(
+            borderRadius: cardRadius,
+            onTap: onTap,
+            child: SizedBox(
+              height: 72,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    icon,
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            appName,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: fg,
+                            ),
+                          ),
+                          Text(
+                            '${services.length} service${services.length == 1 ? '' : 's'} monitored',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              fontSize: 12,
+                              color: headerFg?.withValues(alpha: 0.75) ??
+                                  theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (anyIssue)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 4),
+                        child: Icon(Icons.warning_amber,
+                            color: appColor != null ? fg : Colors.orange, size: 18),
+                      ),
+                    if (!anyIssue && allEnabled)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 4),
+                        child: Icon(Icons.check_circle,
+                            color: appColor != null ? fg : Colors.green, size: 18),
+                      ),
+                    PopupMenuButton<String>(
+                      icon: Icon(Icons.more_vert, size: 20, color: fg),
+                      padding: EdgeInsets.zero,
+                      onSelected: (v) {
+                        if (v == 'restart_all') onRestartAll();
+                        if (v == 'view_history') onViewHistory();
+                      },
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(value: 'restart_all', child: Text('Restart all')),
+                        PopupMenuItem(value: 'view_history', child: Text('View history')),
+                      ],
+                    ),
+                    AnimatedRotation(
+                      turns: expanded ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 200),
+                      child: Icon(Icons.expand_more, color: fg),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(_GroupHeaderDelegate old) =>
+      old.expanded != expanded ||
+      old.appColor != appColor ||
+      old.iconBytes != iconBytes ||
+      old.services != services;
 }

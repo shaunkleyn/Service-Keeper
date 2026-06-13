@@ -65,6 +65,8 @@ class _ServiceAuditScreenState extends State<ServiceAuditScreen> {
 
   Widget _buildEventTile(AuditEvent e) {
     final (icon, color) = _iconAndColor(e.eventType);
+    final usedBroadcastFallback =
+        (e.notes ?? '').toLowerCase().contains('broadcast fallback');
     return ListTile(
       dense: true,
       leading: CircleAvatar(
@@ -79,6 +81,24 @@ class _ServiceAuditScreenState extends State<ServiceAuditScreen> {
         children: [
           Row(children: [
             Text(_formatTs(e.timestamp), style: const TextStyle(fontSize: 11)),
+            if (usedBroadcastFallback) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                  color: Colors.teal.shade50,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  'Fallback',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.teal.shade700,
+                  ),
+                ),
+              ),
+            ],
             if (e.trigger != null) ...[
               const SizedBox(width: 8),
               Container(
@@ -102,15 +122,24 @@ class _ServiceAuditScreenState extends State<ServiceAuditScreen> {
               ),
             ],
           ]),
-          // When showing package-level history, display the service label
           if (widget._serviceClass == null)
             Text(e.displayLabel,
                 style: const TextStyle(fontSize: 10, color: Colors.grey)),
+          if (e.notes != null && e.notes!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                e.notes!,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.red.shade700,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
         ],
       ),
-      trailing: e.notes != null
-          ? Tooltip(message: e.notes!, child: const Icon(Icons.info_outline, size: 16))
-          : null,
+      trailing: null,
     );
   }
 

@@ -5,6 +5,7 @@ import 'app_info_service.dart';
 class ServiceManager {
   final ShizukuService _shizuku;
   final _appInfo = AppInfoService();
+  final Map<String, List<String>> _broadcastStartActionCache = {};
 
   ServiceManager(this._shizuku);
 
@@ -69,34 +70,116 @@ class ServiceManager {
     return output.contains(service.serviceClass);
   }
 
-  /// Start (or restart) a service. Returns true if command sent successfully.
-  Future<bool> startService(MonitoredService service) async {
+  /// Start (or restart) a service. Returns (success, errorReason); errorReason is null on success.
+  Future<(bool, String?)> startService(MonitoredService service) async {
     final result = await _shizuku.exec(
       'am start-foreground-service -n ${service.fullServiceName}',
     );
-    // Fallback to regular startservice for older APIs
     if (result == null || result.contains('Error')) {
       final fallback = await _shizuku.exec(
         'am startservice -n ${service.fullServiceName}',
       );
-      return fallback != null && !fallback.contains('Error');
+      if (fallback != null && !fallback.contains('Error')) {
+        return (true, 'restart method: direct startservice');
+      }
+
+      // If direct start is blocked by app export/permission rules,
+      // attempt app-defined exported broadcast actions as a fallback.
+      final (broadcastOk, broadcastReason) = await _tryBroadcastStartFallback(service);
+      if (broadcastOk) return (true, broadcastReason);
+
+      final reason = fallback == null
+          ? (result != null ? _amError(result) : 'Shizuku returned null')
+          : _amError(fallback);
+      if (broadcastReason == null || broadcastReason.isEmpty) return (false, reason);
+      return (false, '$reason; broadcast fallback failed: $broadcastReason');
     }
-    return true;
+    return (true, 'restart method: direct start-foreground-service');
+  }
+
+  Future<(bool, String?)> _tryBroadcastStartFallback(MonitoredService service) async {
+    final actions = await _getBroadcastStartActions(service.packageName);
+    if (actions.isEmpty) {
+      return (false, 'no matching exported start/toggle broadcast actions found');
+    }
+
+    final tried = <String>[];
+    for (final action in actions) {
+      tried.add(action);
+      await _shizuku.exec(
+        'am broadcast --user 0 --include-stopped-packages '
+        '-a $action -p ${service.packageName}',
+      );
+
+      await Future.delayed(const Duration(seconds: 2));
+      final running = await isServiceRunning(service);
+      if (running == true) {
+        return (true, 'restart method: broadcast fallback ($action)');
+      }
+    }
+
+    return (false, 'tried actions: ${tried.join(', ')}');
+  }
+
+  Future<List<String>> _getBroadcastStartActions(String packageName) async {
+    final cached = _broadcastStartActionCache[packageName];
+    if (cached != null) return cached;
+
+    final output = await _shizuku.exec('dumpsys package $packageName');
+    final actions = <String>[];
+    if (output != null) {
+      final actionRegex = RegExp('Action: "([^"]+)"');
+      for (final match in actionRegex.allMatches(output)) {
+        final action = match.group(1);
+        if (action == null) continue;
+        final upper = action.toUpperCase();
+        if (!upper.startsWith('${packageName.toUpperCase()}.')) continue;
+        if (upper.contains('START') || upper.contains('TOGGLE') || upper.contains('RESTART')) {
+          actions.add(action);
+        }
+      }
+    }
+
+    // Deterministic fallback guesses for apps that expose custom actions.
+    final guesses = [
+      '$packageName.INTENT_START_SERVICE',
+      '$packageName.INTENT_RESTART_SERVICE',
+      '$packageName.INTENT_TOGGLE_SERVICE',
+      '$packageName.ACTION_START_SERVICE',
+      '$packageName.ACTION_RESTART_SERVICE',
+      '$packageName.ACTION_TOGGLE_SERVICE',
+    ];
+
+    final seen = <String>{};
+    final deduped = <String>[];
+    for (final action in [...actions, ...guesses]) {
+      if (seen.add(action)) deduped.add(action);
+    }
+
+    _broadcastStartActionCache[packageName] = deduped;
+    return deduped;
+  }
+
+  static String _amError(String output) {
+    for (final line in output.split('\n')) {
+      if (line.startsWith('Error:')) return line.replaceFirst('Error: ', '').trim();
+    }
+    return output.trim();
   }
 
   /// Force-stop then restart — harder reset for stubborn services.
   Future<bool> forceRestartService(MonitoredService service) async {
     await _shizuku.exec('am force-stop ${service.packageName}');
-    // Brief pause to let the process fully die
     await Future.delayed(const Duration(seconds: 2));
-    return startService(service);
+    final (ok, _) = await startService(service);
+    return ok;
   }
 
   /// Check and restart if dead. Returns true if a restart was triggered.
   Future<bool> ensureRunning(MonitoredService service) async {
     final running = await isServiceRunning(service);
     if (running == true) return false;
-    await startService(service);
-    return true;
+    final (ok, _) = await startService(service);
+    return ok;
   }
 }
