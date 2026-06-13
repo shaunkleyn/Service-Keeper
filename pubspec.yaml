@@ -1,0 +1,38 @@
+name: service_keeper
+description: Keep Android background services alive using Shizuku
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: ">=3.10.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Shizuku bridge
+  shizuku_api: ^1.0.2
+
+  # Background scheduling
+  workmanager: ^0.9.0+3
+
+  # Persistence
+  shared_preferences: ^2.2.3
+
+  # Notifications
+  flutter_local_notifications: ^17.0.0
+
+  # Runtime permissions
+  permission_handler: ^11.3.1
+
+  # Icons
+  cupertino_icons: ^1.0.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true

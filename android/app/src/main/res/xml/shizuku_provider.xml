@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This file is referenced by the ShizukuProvider in AndroidManifest.xml.
+     No content needed; Shizuku uses the authority defined in the manifest. -->
+<paths/>
