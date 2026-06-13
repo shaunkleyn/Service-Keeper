@@ -60,11 +60,12 @@ class ServiceManager {
     return _parseDumpsys(output);
   }
 
-  Future<bool> isServiceRunning(MonitoredService service) async {
+  /// Returns null if Shizuku exec fails (can't determine state).
+  Future<bool?> isServiceRunning(MonitoredService service) async {
     final output = await _shizuku.exec(
       'dumpsys activity services ${service.packageName}',
     );
-    if (output == null) return false;
+    if (output == null) return null;
     return output.contains(service.serviceClass);
   }
 
@@ -94,7 +95,7 @@ class ServiceManager {
   /// Check and restart if dead. Returns true if a restart was triggered.
   Future<bool> ensureRunning(MonitoredService service) async {
     final running = await isServiceRunning(service);
-    if (running) return false;
+    if (running == true) return false;
     await startService(service);
     return true;
   }

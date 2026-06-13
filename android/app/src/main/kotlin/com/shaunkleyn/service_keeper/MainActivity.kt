@@ -1,7 +1,11 @@
 package com.shaunkleyn.service_keeper
 
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
@@ -96,6 +100,26 @@ class MainActivity : FlutterActivity() {
                     } catch (e: Exception) {
                         result.success(null)
                     }
+                }
+                "isBatteryOptimizationExempt" -> {
+                    val pm = getSystemService(POWER_SERVICE) as PowerManager
+                    result.success(pm.isIgnoringBatteryOptimizations(packageName))
+                }
+                "requestBatteryOptimizationExemption" -> {
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
+                    startActivity(intent)
+                    result.success(null)
+                }
+                "startKeeperService" -> {
+                    val count = call.argument<Int>("count") ?: 0
+                    KeeperForegroundService.start(applicationContext, count)
+                    result.success(null)
+                }
+                "stopKeeperService" -> {
+                    KeeperForegroundService.stop(applicationContext)
+                    result.success(null)
                 }
                 else -> result.notImplemented()
             }

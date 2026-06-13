@@ -131,13 +131,27 @@ class _ServicePickerScreenState extends State<ServicePickerScreen> {
 
     final sections = <_Section>[];
 
+    // Monitored services: one section per app (grouped), shown first
     if (monitored.isNotEmpty) {
-      sections.add(_Section(
-        appName: 'Already Monitoring',
-        packageName: '',
-        services: monitored,
-        isMonitoredGroup: true,
-      ));
+      final monByPkg = <String, List<RunningService>>{};
+      for (final s in monitored) {
+        monByPkg.putIfAbsent(s.packageName, () => []).add(s);
+      }
+      final sortedMon = monByPkg.keys.toList()
+        ..sort((a, b) {
+          final aName = monByPkg[a]!.first.appName ?? a;
+          final bName = monByPkg[b]!.first.appName ?? b;
+          return aName.toLowerCase().compareTo(bName.toLowerCase());
+        });
+      for (final pkg in sortedMon) {
+        final svcs = monByPkg[pkg]!;
+        sections.add(_Section(
+          appName: svcs.first.appName ?? pkg,
+          packageName: pkg,
+          services: svcs,
+          isMonitoredGroup: true,
+        ));
+      }
     }
 
     for (final pkg in sortedPkgs) {
@@ -166,6 +180,8 @@ class _ServicePickerScreenState extends State<ServicePickerScreen> {
       serviceClass: s.serviceClass,
       displayLabel: _labelFor(s),
       appName: s.appName,
+      wasRunning: s.isRunning,
+      lastChecked: DateTime.now(),
     ));
   }
 
@@ -312,10 +328,15 @@ class _ServicePickerScreenState extends State<ServicePickerScreen> {
     if (section.isMonitoredGroup) {
       return ExpansionTile(
         key: key,
-        initiallyExpanded: true,
-        leading: Icon(Icons.check_circle_outline, color: cs.primary, size: 32),
-        title: Text(section.appName,
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+        initiallyExpanded: autoExpand,
+        leading: _buildAvatar(section.packageName),
+        title: Row(children: [
+          Expanded(
+            child: Text(section.appName,
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+          ),
+          _badge('Monitoring', Colors.green.shade100, Colors.green.shade800),
+        ]),
         children: section.services.map(_buildServiceTile).toList(),
       );
     }

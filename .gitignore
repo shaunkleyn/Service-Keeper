@@ -27,3 +27,5 @@ android/app/release/
 
 # Pubspec lock (keep for reproducible builds)
 # pubspec.lock
+.specstory/
+.specstory/history/2026-06-13_07-32-30Z.md

@@ -122,6 +122,22 @@ class DatabaseService {
     return rows.map(AuditEvent.fromMap).toList();
   }
 
+  Future<List<AuditEvent>> getAllEvents() async {
+    final d = await db;
+    final rows = await d.query('audit_log', orderBy: 'timestamp ASC');
+    return rows.map(AuditEvent.fromMap).toList();
+  }
+
+  Future<void> importAuditEvents(List<AuditEvent> events) async {
+    if (events.isEmpty) return;
+    final d = await db;
+    await d.transaction((txn) async {
+      for (final e in events) {
+        await txn.insert('audit_log', e.toMap());
+      }
+    });
+  }
+
   /// Import pending events written by MonitorWorker into the audit_log table,
   /// then clear the queue from SharedPreferences.
   Future<void> importPendingEvents() async {

@@ -4,9 +4,22 @@ import '../models/monitored_service.dart';
 import '../services/database_service.dart';
 
 class ServiceAuditScreen extends StatefulWidget {
-  final MonitoredService service;
+  final String _packageName;
+  final String? _serviceClass;
+  final String _title;
 
-  const ServiceAuditScreen({super.key, required this.service});
+  ServiceAuditScreen({super.key, required MonitoredService service})
+      : _packageName = service.packageName,
+        _serviceClass = service.serviceClass,
+        _title = '${service.displayLabel} — History';
+
+  const ServiceAuditScreen.forApp({
+    super.key,
+    required String packageName,
+    required String appName,
+  })  : _packageName = packageName,
+        _serviceClass = null,
+        _title = '$appName — History';
 
   @override
   State<ServiceAuditScreen> createState() => _ServiceAuditScreenState();
@@ -25,18 +38,19 @@ class _ServiceAuditScreenState extends State<ServiceAuditScreen> {
 
   Future<void> _load() async {
     final events = await _db.getEvents(
-      packageName: widget.service.packageName,
-      serviceClass: widget.service.serviceClass,
+      packageName: widget._packageName,
+      serviceClass: widget._serviceClass,
     );
-    setState(() { _events = events; _loading = false; });
+    setState(() {
+      _events = events;
+      _loading = false;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('${widget.service.displayLabel} — History'),
-      ),
+      appBar: AppBar(title: Text(widget._title)),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _events.isEmpty
@@ -60,32 +74,40 @@ class _ServiceAuditScreenState extends State<ServiceAuditScreen> {
       ),
       title: Text(e.eventType.label,
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-      subtitle: Row(children: [
-        Text(_formatTs(e.timestamp),
-            style: const TextStyle(fontSize: 11)),
-        if (e.trigger != null) ...[
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-            decoration: BoxDecoration(
-              color: e.trigger == AuditTrigger.automatic
-                  ? Colors.blue.shade50
-                  : Colors.purple.shade50,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              e.trigger == AuditTrigger.automatic ? 'Auto' : 'Manual',
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-                color: e.trigger == AuditTrigger.automatic
-                    ? Colors.blue.shade700
-                    : Colors.purple.shade700,
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Text(_formatTs(e.timestamp), style: const TextStyle(fontSize: 11)),
+            if (e.trigger != null) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                  color: e.trigger == AuditTrigger.automatic
+                      ? Colors.blue.shade50
+                      : Colors.purple.shade50,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  e.trigger == AuditTrigger.automatic ? 'Auto' : 'Manual',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: e.trigger == AuditTrigger.automatic
+                        ? Colors.blue.shade700
+                        : Colors.purple.shade700,
+                  ),
+                ),
               ),
-            ),
-          ),
+            ],
+          ]),
+          // When showing package-level history, display the service label
+          if (widget._serviceClass == null)
+            Text(e.displayLabel,
+                style: const TextStyle(fontSize: 10, color: Colors.grey)),
         ],
-      ]),
+      ),
       trailing: e.notes != null
           ? Tooltip(message: e.notes!, child: const Icon(Icons.info_outline, size: 16))
           : null,
