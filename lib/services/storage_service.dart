@@ -1,47 +1,39 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/monitored_service.dart';
+import 'database_service.dart';
 
 class StorageService {
-  static const _key = 'monitored_services';
+  final _db = DatabaseService();
 
-  Future<List<MonitoredService>> loadServices() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_key);
-    if (raw == null || raw.isEmpty) return [];
-    try {
-      return MonitoredService.listFromJson(raw);
-    } catch (_) {
-      return [];
-    }
-  }
+  // SharedPreferences key used by MonitorWorker.kt on the native side
+  static const _nativeKey = 'monitored_services';
+
+  Future<List<MonitoredService>> loadServices() => _db.loadServices();
 
   Future<void> saveServices(List<MonitoredService> services) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_key, MonitoredService.listToJson(services));
+    await _db.saveAllServices(services);
+    await _syncToPrefs(services);
   }
 
   Future<void> addService(MonitoredService service) async {
-    final list = await loadServices();
-    if (!list.contains(service)) {
-      list.add(service);
-      await saveServices(list);
-    }
+    await _db.upsertService(service);
+    await _syncToPrefs(await _db.loadServices());
   }
 
   Future<void> removeService(MonitoredService service) async {
-    final list = await loadServices();
-    list.remove(service);
-    await saveServices(list);
+    await _db.removeService(service);
+    await _syncToPrefs(await _db.loadServices());
   }
 
   Future<void> updateService(MonitoredService service) async {
-    final list = await loadServices();
-    final idx = list.indexOf(service);
-    if (idx >= 0) {
-      list[idx] = service;
-    } else {
-      list.add(service);
-    }
-    await saveServices(list);
+    await _db.upsertService(service);
+    await _syncToPrefs(await _db.loadServices());
+  }
+
+  /// Keeps flutter.monitored_services in SharedPreferences so MonitorWorker
+  /// can read it on device boot without needing Flutter running.
+  Future<void> _syncToPrefs(List<MonitoredService> services) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_nativeKey, MonitoredService.listToJson(services));
   }
 }

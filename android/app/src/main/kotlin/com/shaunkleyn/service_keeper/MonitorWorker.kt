@@ -16,6 +16,7 @@ class MonitorWorker(context: Context, params: WorkerParameters) :
     companion object {
         private const val PREFS_NAME = "FlutterSharedPreferences"
         private const val SERVICES_KEY = "flutter.monitored_services"
+        private const val AUDIT_KEY = "flutter.pending_audit_events"
         private const val CHANNEL_ID = "service_keeper_channel"
         private const val CHANNEL_NAME = "Service Keeper"
         private var notifId = 1000
@@ -97,8 +98,15 @@ class MonitorWorker(context: Context, params: WorkerParameters) :
 
         val running = ShizukuExecutor.isServiceRunning(pkg, cls)
         if (!running) {
+            appendAuditEvent(pkg, cls, label, "DETECTED_STOPPED", "AUTOMATIC", null)
+            appendAuditEvent(pkg, cls, label, "RESTART_ATTEMPTED", "AUTOMATIC", null)
             val ok = ShizukuExecutor.startService(pkg, cls)
-            if (ok) sendNotification(label, "Restarted $label — service was not running.")
+            if (ok) {
+                appendAuditEvent(pkg, cls, label, "RESTART_SUCCESS", "AUTOMATIC", null)
+                sendNotification(label, "Restarted $label — service was not running.")
+            } else {
+                appendAuditEvent(pkg, cls, label, "RESTART_FAILED", "AUTOMATIC", null)
+            }
         }
 
         // Self-chain for sub-15-min intervals
@@ -108,6 +116,28 @@ class MonitorWorker(context: Context, params: WorkerParameters) :
         }
 
         return Result.success()
+    }
+
+    private fun appendAuditEvent(
+        pkg: String, cls: String, lbl: String,
+        evt: String, trg: String, notes: String?
+    ) {
+        try {
+            val prefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val existing = prefs.getString(AUDIT_KEY, "[]")
+            val arr = JSONArray(existing)
+            val obj = JSONObject().apply {
+                put("ts", java.time.Instant.now().toString())
+                put("pkg", pkg)
+                put("cls", cls)
+                put("lbl", lbl)
+                put("evt", evt)
+                put("trg", trg)
+                if (notes != null) put("notes", notes)
+            }
+            arr.put(obj)
+            prefs.edit().putString(AUDIT_KEY, arr.toString()).apply()
+        } catch (_: Exception) {}
     }
 
     private fun sendNotification(title: String, text: String) {

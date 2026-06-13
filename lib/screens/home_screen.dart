@@ -8,9 +8,12 @@ import '../services/service_manager.dart';
 import '../services/shizuku_service.dart';
 import '../services/storage_service.dart';
 import '../services/app_info_service.dart';
+import '../services/database_service.dart';
+import '../models/audit_event.dart';
 import '../widgets/service_tile.dart';
 import 'service_picker_screen.dart';
 import 'service_detail_screen.dart';
+import 'service_audit_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -23,6 +26,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final _storage = StorageService();
   final _shizuku = ShizukuService();
   final _appInfo = AppInfoService();
+  final _db = DatabaseService();
   late final ServiceManager _manager;
 
   List<MonitoredService> _services = [];
@@ -51,10 +55,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _init() async {
+    await _db.importPendingEvents();
     await _checkShizuku();
     await _loadServices();
     setState(() => _loading = false);
   }
+
+  Future<void> _log(MonitoredService s, AuditEventType type, AuditTrigger trigger, {String? notes}) =>
+      _db.addEvent(AuditEvent(
+        timestamp: DateTime.now(),
+        packageName: s.packageName,
+        serviceClass: s.serviceClass,
+        displayLabel: s.displayLabel,
+        eventType: type,
+        trigger: trigger,
+        notes: notes,
+      ));
 
   Future<void> _checkShizuku() async {
     final status = await _shizuku.checkStatus();
@@ -164,6 +180,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
     if (result == null) return;
     await _storage.addService(result);
+    await _log(result, AuditEventType.added, AuditTrigger.manual);
     await _loadServices();
     _scheduleWork(result);
   }
@@ -182,6 +199,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _toggleService(MonitoredService service) async {
     final updated = service.copyWith(enabled: !service.enabled);
     await _storage.updateService(updated);
+    await _log(updated,
+        updated.enabled ? AuditEventType.enabled : AuditEventType.disabled,
+        AuditTrigger.manual);
     await _loadServices();
     _scheduleWork(updated);
   }
@@ -205,6 +225,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (ok != true) return;
     Workmanager().cancelByTag(service.workTag);
     await _storage.removeService(service);
+    await _log(service, AuditEventType.removed, AuditTrigger.manual);
     await _loadServices();
   }
 
@@ -213,7 +234,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Restarting ${service.displayLabel}...')),
     );
+    await _log(service, AuditEventType.restartAttempted, AuditTrigger.manual);
     final ok = await _manager.startService(service);
+    await _log(service,
+        ok ? AuditEventType.restartSuccess : AuditEventType.restartFailed,
+        AuditTrigger.manual);
     final updated = service.copyWith(
       lastRestarted: ok ? DateTime.now() : service.lastRestarted,
       wasRunning: false,
@@ -383,6 +408,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                   onConfigure: () => _configureService(s),
                                   onRemove: () => _removeService(s),
                                   onRestartNow: () => _restartNow(s),
+                                  onViewHistory: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => ServiceAuditScreen(service: s),
+                                    ),
+                                  ),
                                 )).toList(),
                               ),
                             );

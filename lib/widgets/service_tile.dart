@@ -9,6 +9,7 @@ class ServiceTile extends StatelessWidget {
   final VoidCallback? onConfigure;
   final VoidCallback? onRemove;
   final VoidCallback? onRestartNow;
+  final VoidCallback? onViewHistory;
 
   const ServiceTile({
     super.key,
@@ -18,6 +19,7 @@ class ServiceTile extends StatelessWidget {
     this.onConfigure,
     this.onRemove,
     this.onRestartNow,
+    this.onViewHistory,
   });
 
   Color _statusColor(BuildContext context) {
@@ -118,6 +120,13 @@ class ServiceTile extends StatelessWidget {
               ),
             ),
           ]),
+          if (service.lastChecked != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              'Last checked: ${_formatTime(service.lastChecked!)}',
+              style: theme.textTheme.bodySmall?.copyWith(fontSize: 10),
+            ),
+          ],
           if (service.lastRestarted != null) ...[
             const SizedBox(height: 2),
             Text(
@@ -138,11 +147,13 @@ class ServiceTile extends StatelessWidget {
             onSelected: (v) {
               if (v == 'configure') onConfigure?.call();
               if (v == 'restart') onRestartNow?.call();
+              if (v == 'history') onViewHistory?.call();
               if (v == 'remove') onRemove?.call();
             },
             itemBuilder: (_) => [
               const PopupMenuItem(value: 'configure', child: Text('Configure')),
               const PopupMenuItem(value: 'restart', child: Text('Restart now')),
+              const PopupMenuItem(value: 'history', child: Text('View history')),
               const PopupMenuItem(
                   value: 'remove',
                   child: Text('Remove', style: TextStyle(color: Colors.red))),

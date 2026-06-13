@@ -1,0 +1,115 @@
+import 'package:flutter/material.dart';
+import '../models/audit_event.dart';
+import '../models/monitored_service.dart';
+import '../services/database_service.dart';
+
+class ServiceAuditScreen extends StatefulWidget {
+  final MonitoredService service;
+
+  const ServiceAuditScreen({super.key, required this.service});
+
+  @override
+  State<ServiceAuditScreen> createState() => _ServiceAuditScreenState();
+}
+
+class _ServiceAuditScreenState extends State<ServiceAuditScreen> {
+  final _db = DatabaseService();
+  List<AuditEvent> _events = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final events = await _db.getEvents(
+      packageName: widget.service.packageName,
+      serviceClass: widget.service.serviceClass,
+    );
+    setState(() { _events = events; _loading = false; });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('${widget.service.displayLabel} — History'),
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _events.isEmpty
+              ? const Center(child: Text('No events recorded yet.'))
+              : ListView.separated(
+                  itemCount: _events.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (ctx, i) => _buildEventTile(_events[i]),
+                ),
+    );
+  }
+
+  Widget _buildEventTile(AuditEvent e) {
+    final (icon, color) = _iconAndColor(e.eventType);
+    return ListTile(
+      dense: true,
+      leading: CircleAvatar(
+        radius: 16,
+        backgroundColor: color.withValues(alpha: 0.15),
+        child: Icon(icon, size: 16, color: color),
+      ),
+      title: Text(e.eventType.label,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+      subtitle: Row(children: [
+        Text(_formatTs(e.timestamp),
+            style: const TextStyle(fontSize: 11)),
+        if (e.trigger != null) ...[
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            decoration: BoxDecoration(
+              color: e.trigger == AuditTrigger.automatic
+                  ? Colors.blue.shade50
+                  : Colors.purple.shade50,
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              e.trigger == AuditTrigger.automatic ? 'Auto' : 'Manual',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: e.trigger == AuditTrigger.automatic
+                    ? Colors.blue.shade700
+                    : Colors.purple.shade700,
+              ),
+            ),
+          ),
+        ],
+      ]),
+      trailing: e.notes != null
+          ? Tooltip(message: e.notes!, child: const Icon(Icons.info_outline, size: 16))
+          : null,
+    );
+  }
+
+  (IconData, Color) _iconAndColor(AuditEventType t) => switch (t) {
+        AuditEventType.detectedStopped => (Icons.stop_circle_outlined, Colors.orange),
+        AuditEventType.restartAttempted => (Icons.refresh, Colors.blue),
+        AuditEventType.restartSuccess => (Icons.check_circle_outline, Colors.green),
+        AuditEventType.restartFailed => (Icons.error_outline, Colors.red),
+        AuditEventType.added => (Icons.add_circle_outline, Colors.teal),
+        AuditEventType.removed => (Icons.remove_circle_outline, Colors.red),
+        AuditEventType.enabled => (Icons.toggle_on_outlined, Colors.green),
+        AuditEventType.disabled => (Icons.toggle_off_outlined, Colors.grey),
+      };
+
+  String _formatTs(DateTime dt) {
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    final time =
+        '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    if (diff.inDays == 0) return 'Today $time';
+    if (diff.inDays == 1) return 'Yesterday $time';
+    return '${dt.day}/${dt.month}/${dt.year} $time';
+  }
+}

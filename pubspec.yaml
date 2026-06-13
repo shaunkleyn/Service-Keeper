@@ -26,6 +26,10 @@ dependencies:
   # Runtime permissions
   permission_handler: ^11.3.1
 
+  # Database
+  sqflite: ^2.3.3
+  path: ^1.9.0
+
   # Icons
   cupertino_icons: ^1.0.2
 
