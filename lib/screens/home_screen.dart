@@ -20,6 +20,7 @@ import '../widgets/service_tile.dart';
 import 'service_picker_screen.dart';
 import 'service_detail_screen.dart';
 import 'service_audit_screen.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -268,10 +269,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
     );
     if (result == null) return;
-    await _storage.addService(result);
-    await _log(result, AuditEventType.added, AuditTrigger.manual);
+    final prefs = await SharedPreferences.getInstance();
+    final defaultInterval = prefs.getInt('default_check_interval') ?? 15;
+    final service = result.copyWith(intervalMinutes: defaultInterval);
+    await _storage.addService(service);
+    await _log(service, AuditEventType.added, AuditTrigger.manual);
     await _loadServices();
-    await _scheduleWork(result);
+    await _scheduleWork(service);
   }
 
   Future<void> _configureService(MonitoredService service) async {
@@ -539,14 +543,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _toggleAppColors() async {
-    final prefs = await SharedPreferences.getInstance();
-    final newValue = !_useAppColors;
-    await prefs.setBool('use_app_colors', newValue);
-    setState(() => _useAppColors = newValue);
-    if (newValue) _generateAppColors();
-  }
-
   void _showShizukuWarning() {
     showDialog(
       context: context,
@@ -658,18 +654,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           PopupMenuButton<String>(
             onSelected: (v) {
+              if (v == 'settings') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                ).then((_) => _loadColorPreference());
+              }
               if (v == 'backup') _backup();
               if (v == 'restore') _restore();
-              if (v == 'app_colors') _toggleAppColors();
             },
-            itemBuilder: (_) => [
-              const PopupMenuItem(value: 'backup', child: Text('Backup')),
-              const PopupMenuItem(value: 'restore', child: Text('Restore')),
-              CheckedPopupMenuItem(
-                value: 'app_colors',
-                checked: _useAppColors,
-                child: const Text('Use app colors'),
-              ),
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'settings', child: Text('Settings')),
+              PopupMenuItem(value: 'backup', child: Text('Backup')),
+              PopupMenuItem(value: 'restore', child: Text('Restore')),
             ],
           ),
         ],
