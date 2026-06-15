@@ -142,10 +142,13 @@ class _ServiceTileState extends State<ServiceTile> with WidgetsBindingObserver {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          leading: widget.showLeading
-              ? Stack(
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              if (widget.showLeading) ...[
+                Stack(
                   children: [
                     widget.iconBytes != null
                         ? CircleAvatar(
@@ -175,103 +178,128 @@ class _ServiceTileState extends State<ServiceTile> with WidgetsBindingObserver {
                       ),
                     ),
                   ],
-                )
-              : null,
-          title: Text(
-            widget.service.displayLabel,
-            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-          ),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                widget.service.serviceClass,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  fontSize: 11,
                 ),
-                overflow: TextOverflow.ellipsis,
+                const SizedBox(width: 16),
+              ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      widget.service.displayLabel,
+                      style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      widget.service.serviceClass,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontSize: 11,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(children: [
+                      Icon(Icons.schedule, size: 12, color: theme.colorScheme.primary),
+                      const SizedBox(width: 4),
+                      Text(
+                        _intervalLabel(),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: statusColor.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          _statusLabel(),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: statusColor,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                    ]),
+                    if (widget.service.lastChecked != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        'Last checked: ${_formatTime(widget.service.lastChecked!)}',
+                        style: theme.textTheme.bodySmall?.copyWith(fontSize: 10),
+                      ),
+                    ],
+                    if (widget.service.lastRestarted != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        'Last restarted: ${_formatTime(widget.service.lastRestarted!)}',
+                        style: theme.textTheme.bodySmall?.copyWith(fontSize: 10),
+                      ),
+                    ],
+                    if (nextLabel.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        nextLabel,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontSize: 10,
+                          color: theme.colorScheme.onSurfaceVariant,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
-              const SizedBox(height: 4),
-              Row(children: [
-                Icon(Icons.schedule, size: 12, color: theme.colorScheme.primary),
-                const SizedBox(width: 4),
-                Text(
-                  _intervalLabel(),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.primary,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    _statusLabel(),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: statusColor,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 11,
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Transform.scale(
+                    scale: 0.75,
+                    alignment: Alignment.centerRight,
+                    child: Switch(
+                      value: widget.service.enabled,
+                      onChanged: widget.onToggle != null ? (_) => widget.onToggle!() : null,
+                      thumbColor: widget.accentColor == null
+                          ? null
+                          : WidgetStateProperty.resolveWith((states) {
+                              if (states.contains(WidgetState.selected)) {
+                                return ThemeData.estimateBrightnessForColor(widget.accentColor!) ==
+                                        Brightness.dark
+                                    ? Colors.white
+                                    : Colors.black87;
+                              }
+                              return null;
+                            }),
+                      trackColor: widget.accentColor == null
+                          ? null
+                          : WidgetStateProperty.resolveWith((states) {
+                              if (states.contains(WidgetState.selected)) {
+                                return widget.accentColor;
+                              }
+                              return null;
+                            }),
                     ),
                   ),
-                ),
-              ]),
-              if (widget.service.lastChecked != null) ...[
-                const SizedBox(height: 2),
-                Text(
-                  'Last checked: ${_formatTime(widget.service.lastChecked!)}',
-                  style: theme.textTheme.bodySmall?.copyWith(fontSize: 10),
-                ),
-              ],
-              if (widget.service.lastRestarted != null) ...[
-                const SizedBox(height: 2),
-                Text(
-                  'Last restarted: ${_formatTime(widget.service.lastRestarted!)}',
-                  style: theme.textTheme.bodySmall?.copyWith(fontSize: 10),
-                ),
-              ],
-              if (nextLabel.isNotEmpty) ...[
-                const SizedBox(height: 3),
-                Text(
-                  nextLabel,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontSize: 10,
-                    color: theme.colorScheme.onSurfaceVariant,
-                    fontStyle: FontStyle.italic,
+                  PopupMenuButton<String>(
+                    onSelected: (v) {
+                      if (v == 'configure') widget.onConfigure?.call();
+                      if (v == 'restart') widget.onRestartNow?.call();
+                      if (v == 'history') widget.onViewHistory?.call();
+                      if (v == 'remove') widget.onRemove?.call();
+                    },
+                    itemBuilder: (_) => [
+                      const PopupMenuItem(value: 'configure', child: Text('Configure')),
+                      const PopupMenuItem(value: 'restart', child: Text('Restart now')),
+                      const PopupMenuItem(value: 'history', child: Text('View history')),
+                      const PopupMenuItem(
+                          value: 'remove',
+                          child: Text('Remove', style: TextStyle(color: Colors.red))),
+                    ],
                   ),
-                ),
-              ],
-            ],
-          ),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Transform.scale(
-                scale: 0.75,
-                alignment: Alignment.centerRight,
-                child: Switch(
-                  value: widget.service.enabled,
-                  onChanged: widget.onToggle != null ? (_) => widget.onToggle!() : null,
-                ),
-              ),
-              PopupMenuButton<String>(
-                onSelected: (v) {
-                  if (v == 'configure') widget.onConfigure?.call();
-                  if (v == 'restart') widget.onRestartNow?.call();
-                  if (v == 'history') widget.onViewHistory?.call();
-                  if (v == 'remove') widget.onRemove?.call();
-                },
-                itemBuilder: (_) => [
-                  const PopupMenuItem(value: 'configure', child: Text('Configure')),
-                  const PopupMenuItem(value: 'restart', child: Text('Restart now')),
-                  const PopupMenuItem(value: 'history', child: Text('View history')),
-                  const PopupMenuItem(
-                      value: 'remove',
-                      child: Text('Remove', style: TextStyle(color: Colors.red))),
                 ],
               ),
             ],
