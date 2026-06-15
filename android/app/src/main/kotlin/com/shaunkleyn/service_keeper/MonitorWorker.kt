@@ -17,8 +17,8 @@ class MonitorWorker(context: Context, params: WorkerParameters) :
         private const val PREFS_NAME = "FlutterSharedPreferences"
         private const val SERVICES_KEY = "flutter.monitored_services"
         private const val AUDIT_KEY = "flutter.pending_audit_events"
-        private const val CHANNEL_ID = "service_keeper_channel"
-        private const val CHANNEL_NAME = "Service Keeper"
+        private const val CHANNEL_ID = "service_keeper_restarts"
+        private const val CHANNEL_NAME = "Service Restarts"
         private var notifId = 1000
 
         fun schedule(context: Context, workTag: String, intervalMinutes: Long, inputData: Data) {
@@ -116,7 +116,9 @@ class MonitorWorker(context: Context, params: WorkerParameters) :
             val start = ShizukuExecutor.startServiceDetailed(pkg, cls)
             if (start.ok) {
                 appendAuditEvent(pkg, cls, label, "RESTART_SUCCESS", "AUTOMATIC", start.detail)
-                sendNotification(label, "Restarted $label — service was not running.")
+                if (notificationsEnabledFor(pkg, cls)) {
+                    sendNotification(label, "Restarted $label — service was not running.")
+                }
             } else {
                 appendAuditEvent(pkg, cls, label, "RESTART_FAILED", "AUTOMATIC", start.detail)
             }
@@ -129,6 +131,20 @@ class MonitorWorker(context: Context, params: WorkerParameters) :
         }
 
         return Result.success()
+    }
+
+    private fun notificationsEnabledFor(pkg: String, cls: String): Boolean {
+        return try {
+            val prefs = applicationContext.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
+            val arr = org.json.JSONArray(prefs.getString(SERVICES_KEY, "[]"))
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                if (obj.getString("packageName") == pkg && obj.getString("serviceClass") == cls) {
+                    return obj.optBoolean("notificationsEnabled", true)
+                }
+            }
+            true
+        } catch (_: Exception) { true }
     }
 
     private fun appendAuditEvent(
@@ -158,15 +174,23 @@ class MonitorWorker(context: Context, params: WorkerParameters) :
             as NotificationManager
 
         val channel = NotificationChannel(
-            CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_LOW
+            CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_DEFAULT
         ).apply { description = "Service restart notifications" }
         nm.createNotificationChannel(channel)
 
+        val tapIntent = android.app.PendingIntent.getActivity(
+            applicationContext, notifId,
+            android.content.Intent(applicationContext, MainActivity::class.java).apply {
+                flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
+        )
         val notif = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_menu_manage)
             .setContentTitle(title)
             .setContentText(text)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setContentIntent(tapIntent)
             .setAutoCancel(true)
             .build()
 

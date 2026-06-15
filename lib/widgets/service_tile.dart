@@ -12,6 +12,7 @@ class ServiceTile extends StatefulWidget {
   final VoidCallback? onRestartNow;
   final VoidCallback? onViewHistory;
   final VoidCallback? onCheckDue;
+  final VoidCallback? onToggleNotifications;
   final Color? accentColor;
   final bool showLeading;
 
@@ -25,6 +26,7 @@ class ServiceTile extends StatefulWidget {
     this.onRestartNow,
     this.onViewHistory,
     this.onCheckDue,
+    this.onToggleNotifications,
     this.accentColor,
     this.showLeading = true,
   });
@@ -225,6 +227,16 @@ class _ServiceTileState extends State<ServiceTile> with WidgetsBindingObserver {
                           ),
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        widget.service.notificationsEnabled
+                            ? Icons.notifications
+                            : Icons.notifications_off,
+                        size: 13,
+                        color: widget.service.notificationsEnabled
+                            ? (widget.accentColor ?? theme.colorScheme.primary)
+                            : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.45),
+                      ),
                     ]),
                     if (widget.service.lastChecked != null) ...[
                       const SizedBox(height: 2),
@@ -289,12 +301,32 @@ class _ServiceTileState extends State<ServiceTile> with WidgetsBindingObserver {
                       if (v == 'configure') widget.onConfigure?.call();
                       if (v == 'restart') widget.onRestartNow?.call();
                       if (v == 'history') widget.onViewHistory?.call();
+                      if (v == 'toggle_notifications') widget.onToggleNotifications?.call();
                       if (v == 'remove') widget.onRemove?.call();
                     },
                     itemBuilder: (_) => [
                       const PopupMenuItem(value: 'configure', child: Text('Configure')),
                       const PopupMenuItem(value: 'restart', child: Text('Restart now')),
                       const PopupMenuItem(value: 'history', child: Text('View history')),
+                      PopupMenuItem(
+                        value: 'toggle_notifications',
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Notifications'),
+                            IgnorePointer(
+                              child: Transform.scale(
+                                scale: 0.8,
+                                alignment: Alignment.centerRight,
+                                child: Switch(
+                                  value: widget.service.notificationsEnabled,
+                                  onChanged: (_) {},
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                       const PopupMenuItem(
                           value: 'remove',
                           child: Text('Remove', style: TextStyle(color: Colors.red))),

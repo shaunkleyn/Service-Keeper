@@ -50,6 +50,8 @@ class ServiceManager {
       serviceClass: e.serviceClass,
       appName: e.appName,
       isRunning: runningKeys.contains('${e.packageName}/${e.serviceClass}'),
+      isExported: e.exported,
+      permission: e.permission,
     )).toList();
   }
 

@@ -25,11 +25,15 @@ class _Section {
 class ServicePickerScreen extends StatefulWidget {
   final List<MonitoredService> alreadyMonitored;
   final ServiceManager manager;
+  final String initialQuery;
+  final Future<void> Function(MonitoredService) onServiceAdded;
 
   const ServicePickerScreen({
     super.key,
     required this.alreadyMonitored,
     required this.manager,
+    required this.onServiceAdded,
+    this.initialQuery = '',
   });
 
   @override
@@ -40,19 +44,30 @@ class _ServicePickerScreenState extends State<ServicePickerScreen> {
   final _appInfo = AppInfoService();
 
   List<RunningService> _allServices = [];
-  List<_Section> _sections = [];
+  List<_Section> _monitoredSections = [];
+  List<_Section> _unmonitoredSections = [];
   Map<String, Uint8List?> _iconCache = {};
+  final _addedThisSession = <String>{};
 
   bool _loading = true;
   String? _error;
   String _query = '';
   bool _filterRunning = false;
   bool _filterAppOwned = false;
+  late final TextEditingController _searchController;
 
   @override
   void initState() {
     super.initState();
+    _query = widget.initialQuery;
+    _searchController = TextEditingController(text: widget.initialQuery);
     _load();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -74,7 +89,6 @@ class _ServicePickerScreenState extends State<ServicePickerScreen> {
     final prefs = await SharedPreferences.getInstance();
     final packages = services.map((s) => s.packageName).toSet();
 
-    // Load persisted icons first — instant display
     final cached = <String, Uint8List?>{};
     for (final pkg in packages) {
       final b64 = prefs.getString('app_icon_v1_$pkg');
@@ -84,7 +98,6 @@ class _ServicePickerScreenState extends State<ServicePickerScreen> {
       setState(() => _iconCache = {..._iconCache, ...cached});
     }
 
-    // Fetch only what's missing from native, then persist
     final missing = packages.where((p) => !cached.containsKey(p)).toSet();
     if (missing.isEmpty) return;
 
@@ -118,71 +131,59 @@ class _ServicePickerScreenState extends State<ServicePickerScreen> {
     final monitored = visible.where(_isMonitored).toList();
     final unmonitored = visible.where((s) => !_isMonitored(s)).toList();
 
-    final groups = <String, List<RunningService>>{};
-    for (final s in unmonitored) {
-      groups.putIfAbsent(s.packageName, () => []).add(s);
-    }
-    final sortedPkgs = groups.keys.toList()
-      ..sort((a, b) {
-        final aName = groups[a]!.first.appName ?? a;
-        final bName = groups[b]!.first.appName ?? b;
-        return aName.toLowerCase().compareTo(bName.toLowerCase());
+    _Section toSection(String pkg, List<RunningService> svcs, bool isMonitored) {
+      final sorted = [...svcs]..sort((a, b) {
+        final owned = (a.isAppOwned ? 0 : 1) - (b.isAppOwned ? 0 : 1);
+        return owned != 0 ? owned : a.serviceClass.compareTo(b.serviceClass);
       });
-
-    final sections = <_Section>[];
-
-    // Monitored services: one section per app (grouped), shown first
-    if (monitored.isNotEmpty) {
-      final monByPkg = <String, List<RunningService>>{};
-      for (final s in monitored) {
-        monByPkg.putIfAbsent(s.packageName, () => []).add(s);
-      }
-      final sortedMon = monByPkg.keys.toList()
-        ..sort((a, b) {
-          final aName = monByPkg[a]!.first.appName ?? a;
-          final bName = monByPkg[b]!.first.appName ?? b;
-          return aName.toLowerCase().compareTo(bName.toLowerCase());
-        });
-      for (final pkg in sortedMon) {
-        final svcs = monByPkg[pkg]!;
-        sections.add(_Section(
-          appName: svcs.first.appName ?? pkg,
-          packageName: pkg,
-          services: svcs,
-          isMonitoredGroup: true,
-        ));
-      }
-    }
-
-    for (final pkg in sortedPkgs) {
-      final svcs = groups[pkg]!
-        ..sort((a, b) {
-          final owned = (a.isAppOwned ? 0 : 1) - (b.isAppOwned ? 0 : 1);
-          return owned != 0 ? owned : a.serviceClass.compareTo(b.serviceClass);
-        });
-      sections.add(_Section(
+      return _Section(
         appName: svcs.first.appName ?? pkg,
         packageName: pkg,
-        services: svcs,
-      ));
+        services: sorted,
+        isMonitoredGroup: isMonitored,
+      );
     }
 
-    _sections = sections;
+    String sortName(String pkg, Map<String, List<RunningService>> g) =>
+        (g[pkg]!.first.appName ?? pkg).toLowerCase();
+
+    final monGroups = <String, List<RunningService>>{};
+    for (final s in monitored) monGroups.putIfAbsent(s.packageName, () => []).add(s);
+    final monPkgs = monGroups.keys.toList()
+      ..sort((a, b) => sortName(a, monGroups).compareTo(sortName(b, monGroups)));
+
+    final unmonGroups = <String, List<RunningService>>{};
+    for (final s in unmonitored) unmonGroups.putIfAbsent(s.packageName, () => []).add(s);
+    final unmonPkgs = unmonGroups.keys.toList()
+      ..sort((a, b) => sortName(a, unmonGroups).compareTo(sortName(b, unmonGroups)));
+
+    _monitoredSections = monPkgs.map((p) => toSection(p, monGroups[p]!, true)).toList();
+    _unmonitoredSections = unmonPkgs.map((p) => toSection(p, unmonGroups[p]!, false)).toList();
   }
 
-  bool _isMonitored(RunningService s) => widget.alreadyMonitored.any(
-        (m) => m.packageName == s.packageName && m.serviceClass == s.serviceClass,
-      );
+  bool _isMonitored(RunningService s) {
+    final key = '${s.packageName}/${s.serviceClass}';
+    if (_addedThisSession.contains(key)) return true;
+    return widget.alreadyMonitored.any(
+      (m) => m.packageName == s.packageName && m.serviceClass == s.serviceClass,
+    );
+  }
 
-  void _pick(RunningService s) {
-    Navigator.pop(context, MonitoredService(
+  Future<void> _pick(RunningService s) async {
+    final ms = MonitoredService(
       packageName: s.packageName,
       serviceClass: s.serviceClass,
       displayLabel: _labelFor(s),
       appName: s.appName,
       wasRunning: s.isRunning,
       lastChecked: DateTime.now(),
-    ));
+    );
+    await widget.onServiceAdded(ms);
+    if (!mounted) return;
+    setState(() {
+      _addedThisSession.add('${s.packageName}/${s.serviceClass}');
+      _buildSections();
+    });
   }
 
   String _labelFor(RunningService s) {
@@ -213,7 +214,7 @@ class _ServicePickerScreenState extends State<ServicePickerScreen> {
   }
 
   Widget _badge(String label, Color bg, Color fg) => Container(
-        margin: const EdgeInsets.only(left: 5),
+        margin: const EdgeInsets.only(right: 4),
         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
         decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(4)),
         child: Text(label, style: TextStyle(color: fg, fontSize: 10, fontWeight: FontWeight.bold)),
@@ -222,6 +223,8 @@ class _ServicePickerScreenState extends State<ServicePickerScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final monCount = _monitoredSections.fold(0, (n, s) => n + s.services.length);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Select Service'),
@@ -230,6 +233,7 @@ class _ServicePickerScreenState extends State<ServicePickerScreen> {
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
             child: TextField(
+              controller: _searchController,
               decoration: InputDecoration(
                 hintText: 'Search app, package or service...',
                 prefixIcon: const Icon(Icons.search),
@@ -258,7 +262,6 @@ class _ServicePickerScreenState extends State<ServicePickerScreen> {
                 )
               : Column(
                   children: [
-                    // Filter chips — showCheckmark:false prevents icon+check overlay
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -288,7 +291,6 @@ class _ServicePickerScreenState extends State<ServicePickerScreen> {
                         ),
                       ]),
                     ),
-                    // Info hint
                     Container(
                       width: double.infinity,
                       color: cs.primaryContainer.withValues(alpha: 0.4),
@@ -305,13 +307,33 @@ class _ServicePickerScreenState extends State<ServicePickerScreen> {
                       ]),
                     ),
                     Expanded(
-                      child: _sections.isEmpty
+                      child: (_monitoredSections.isEmpty && _unmonitoredSections.isEmpty)
                           ? Center(child: Text(_allServices.isEmpty
                               ? 'No services detected.'
                               : 'No matching services.'))
-                          : ListView.builder(
-                              itemCount: _sections.length,
-                              itemBuilder: (ctx, i) => _buildSectionTile(_sections[i]),
+                          : ListView(
+                              children: [
+                                if (_monitoredSections.isNotEmpty)
+                                  ExpansionTile(
+                                    initiallyExpanded: false,
+                                    title: Text(
+                                      'Monitored ($monCount)',
+                                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                                    ),
+                                    leading: Icon(Icons.check_circle, color: cs.primary),
+                                    children: _monitoredSections.map(_buildSectionTile).toList(),
+                                  ),
+                                if (_unmonitoredSections.isNotEmpty)
+                                  ExpansionTile(
+                                    initiallyExpanded: true,
+                                    title: Text(
+                                      'Available',
+                                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                                    ),
+                                    leading: Icon(Icons.add_circle_outline, color: cs.primary),
+                                    children: _unmonitoredSections.map(_buildSectionTile).toList(),
+                                  ),
+                              ],
                             ),
                     ),
                   ],
@@ -321,25 +343,8 @@ class _ServicePickerScreenState extends State<ServicePickerScreen> {
 
   Widget _buildSectionTile(_Section section) {
     final cs = Theme.of(context).colorScheme;
-    // Key includes filter state so initiallyExpanded re-evaluates when filters change
     final key = ValueKey('${section.packageName}_${_query}_${_filterRunning}_$_filterAppOwned');
-    final autoExpand = section.isMonitoredGroup || _query.isNotEmpty || _filterRunning;
-
-    if (section.isMonitoredGroup) {
-      return ExpansionTile(
-        key: key,
-        initiallyExpanded: autoExpand,
-        leading: _buildAvatar(section.packageName),
-        title: Row(children: [
-          Expanded(
-            child: Text(section.appName,
-                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-          ),
-          _badge('Monitoring', Colors.green.shade100, Colors.green.shade800),
-        ]),
-        children: section.services.map(_buildServiceTile).toList(),
-      );
-    }
+    final autoExpand = _query.isNotEmpty || _filterRunning;
 
     return ExpansionTile(
       key: key,
@@ -350,13 +355,14 @@ class _ServicePickerScreenState extends State<ServicePickerScreen> {
           child: Text(section.appName,
               style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
         ),
-        if (section.runningCount > 0)
+        if (!section.isMonitoredGroup && section.runningCount > 0)
           _badge('${section.runningCount} running', Colors.green.shade100, Colors.green.shade800),
-        Padding(
-          padding: const EdgeInsets.only(left: 6),
-          child: Text('${section.services.length}',
-              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-        ),
+        if (!section.isMonitoredGroup)
+          Padding(
+            padding: const EdgeInsets.only(left: 2),
+            child: Text('${section.services.length}',
+                style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+          ),
       ]),
       children: section.services.map(_buildServiceTile).toList(),
     );
@@ -365,25 +371,32 @@ class _ServicePickerScreenState extends State<ServicePickerScreen> {
   Widget _buildServiceTile(RunningService s) {
     final cs = Theme.of(context).colorScheme;
     final monitored = _isMonitored(s);
+    final badges = <Widget>[
+      if (s.isRunning) _badge('Running', Colors.green.shade100, Colors.green.shade800),
+      if (s.isAppOwned) _badge('App Service', cs.primaryContainer, cs.onPrimaryContainer),
+      if (s.isJobService) _badge('On-demand', Colors.amber.shade100, Colors.amber.shade900),
+      if (!s.isExported) _badge('Not Exported', Colors.orange.shade100, Colors.orange.shade900),
+    ];
     return ListTile(
       dense: true,
       contentPadding: const EdgeInsets.only(left: 24, right: 16),
-      title: Row(children: [
-        Expanded(
-          child: Text(
-            s.displayServiceClass,
-            style: TextStyle(
-              fontWeight: s.isAppOwned ? FontWeight.w600 : FontWeight.normal,
-              fontSize: 13,
-            ),
-          ),
+      title: Text(
+        s.displayServiceClass,
+        style: TextStyle(
+          fontWeight: s.isAppOwned ? FontWeight.w600 : FontWeight.normal,
+          fontSize: 13,
         ),
-        if (s.isRunning)
-          _badge('Running', Colors.green.shade100, Colors.green.shade800),
-        if (s.isAppOwned)
-          _badge('App Service', cs.primaryContainer, cs.onPrimaryContainer),
-      ]),
-      subtitle: Text(s.packageName, style: const TextStyle(fontSize: 11)),
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(s.packageName, style: const TextStyle(fontSize: 11)),
+          if (badges.isNotEmpty) ...[
+            const SizedBox(height: 3),
+            Wrap(spacing: 0, runSpacing: 2, children: badges),
+          ],
+        ],
+      ),
       trailing: monitored
           ? const Icon(Icons.check_circle, color: Colors.green)
           : const Icon(Icons.add_circle_outline),

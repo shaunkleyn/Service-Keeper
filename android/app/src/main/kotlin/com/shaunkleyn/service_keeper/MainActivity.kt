@@ -16,6 +16,8 @@ import rikka.shizuku.Shizuku
 class MainActivity : FlutterActivity() {
     private val channel = "com.shaunkleyn.service_keeper/shizuku"
     private val shizukuPermCode = 1001
+    private val notifPermCode = 1002
+    private var pendingNotifResult: MethodChannel.Result? = null
 
     private val shizukuPermListener = Shizuku.OnRequestPermissionResultListener { _, result ->
         // Permission result handled; Flutter side will re-check via checkPermission
@@ -55,7 +57,7 @@ class MainActivity : FlutterActivity() {
                             @Suppress("DEPRECATION")
                             pm.getInstalledPackages(android.content.pm.PackageManager.GET_SERVICES)
                         }
-                        val serviceList = mutableListOf<Map<String, String?>>()
+                        val serviceList = mutableListOf<Map<String, Any?>>()
                         for (pkg in packages) {
                             val services = pkg.services
                             if (services.isNullOrEmpty()) continue
@@ -66,7 +68,13 @@ class MainActivity : FlutterActivity() {
                                 pm.getApplicationLabel(appInfo).toString()
                             } catch (e: Exception) { pkg.packageName }
                             for (svc in services) {
-                                serviceList.add(mapOf("p" to pkg.packageName, "c" to svc.name, "n" to appName))
+                                serviceList.add(mapOf(
+                                    "p" to pkg.packageName,
+                                    "c" to svc.name,
+                                    "n" to appName,
+                                    "e" to svc.exported,
+                                    "pm" to (svc.permission ?: ""),
+                                ))
                             }
                         }
                         runOnUiThread { result.success(serviceList) }
@@ -195,8 +203,41 @@ class MainActivity : FlutterActivity() {
                     }
                     result.success(count)
                 }
+                "checkNotificationPermission" -> {
+                    result.success(
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU)
+                            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+                        else true
+                    )
+                }
+                "requestNotificationPermission" -> {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                        pendingNotifResult = result
+                        ActivityCompat.requestPermissions(
+                            this,
+                            arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                            notifPermCode
+                        )
+                    } else {
+                        result.success(true)
+                    }
+                }
                 else -> result.notImplemented()
             }
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == notifPermCode) {
+            val granted = grantResults.isNotEmpty() &&
+                grantResults[0] == PackageManager.PERMISSION_GRANTED
+            pendingNotifResult?.success(granted)
+            pendingNotifResult = null
         }
     }
 

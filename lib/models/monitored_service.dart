@@ -10,6 +10,7 @@ class MonitoredService {
   final DateTime? lastRestarted;
   final DateTime? lastChecked;
   final bool? wasRunning;
+  final bool notificationsEnabled;
 
   const MonitoredService({
     required this.packageName,
@@ -21,6 +22,7 @@ class MonitoredService {
     this.lastRestarted,
     this.lastChecked,
     this.wasRunning,
+    this.notificationsEnabled = true,
   });
 
   String get workTag => '${packageName}_${serviceClass.replaceAll('.', '_')}';
@@ -37,6 +39,7 @@ class MonitoredService {
     DateTime? lastRestarted,
     DateTime? lastChecked,
     bool? wasRunning,
+    bool? notificationsEnabled,
   }) {
     return MonitoredService(
       packageName: packageName ?? this.packageName,
@@ -48,6 +51,7 @@ class MonitoredService {
       lastRestarted: lastRestarted ?? this.lastRestarted,
       lastChecked: lastChecked ?? this.lastChecked,
       wasRunning: wasRunning ?? this.wasRunning,
+      notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
     );
   }
 
@@ -61,6 +65,7 @@ class MonitoredService {
         'lastRestarted': lastRestarted?.toIso8601String(),
         'lastChecked': lastChecked?.toIso8601String(),
         'wasRunning': wasRunning,
+        'notificationsEnabled': notificationsEnabled,
       };
 
   factory MonitoredService.fromJson(Map<String, dynamic> json) =>
@@ -78,6 +83,7 @@ class MonitoredService {
             ? DateTime.parse(json['lastChecked'] as String)
             : null,
         wasRunning: json['wasRunning'] as bool?,
+        notificationsEnabled: json['notificationsEnabled'] as bool? ?? true,
       );
 
   static List<MonitoredService> listFromJson(String raw) {
@@ -106,6 +112,8 @@ class RunningService {
   final String? processName;
   final String? appName;
   final bool isRunning;
+  final bool isExported;
+  final String permission;
 
   const RunningService({
     required this.packageName,
@@ -113,7 +121,12 @@ class RunningService {
     this.processName,
     this.appName,
     this.isRunning = false,
+    this.isExported = true,
+    this.permission = '',
   });
+
+  bool get isJobService =>
+      permission == 'android.permission.BIND_JOB_SERVICE';
 
   String get displayServiceClass {
     if (serviceClass.startsWith(packageName)) {

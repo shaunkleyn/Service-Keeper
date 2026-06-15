@@ -76,4 +76,20 @@ class SystemService {
       return 0;
     }
   }
+
+  Future<bool> isNotificationPermissionGranted() async {
+    try {
+      return await _channel.invokeMethod<bool>('checkNotificationPermission') ?? true;
+    } on PlatformException {
+      return true;
+    }
+  }
+
+  Future<bool> requestNotificationPermission() async {
+    try {
+      return await _channel.invokeMethod<bool>('requestNotificationPermission') ?? false;
+    } on PlatformException {
+      return false;
+    }
+  }
 }

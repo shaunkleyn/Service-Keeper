@@ -21,8 +21,8 @@ class AppInfoService {
   }
 
   /// Returns all declared services from installed non-system apps.
-  /// Each entry has keys: p (packageName), c (serviceClass), n (appName).
-  Future<List<({String packageName, String serviceClass, String appName})>> getInstalledServices({bool includeSystem = false}) async {
+  /// Each entry has keys: p (packageName), c (serviceClass), n (appName), e (exported), pm (permission).
+  Future<List<({String packageName, String serviceClass, String appName, bool exported, String permission})>> getInstalledServices({bool includeSystem = false}) async {
     try {
       final raw = await _channel.invokeMethod<List<dynamic>>(
         'getInstalledServices',
@@ -35,6 +35,8 @@ class AppInfoService {
           packageName: (m['p'] as String?) ?? '',
           serviceClass: (m['c'] as String?) ?? '',
           appName: (m['n'] as String?) ?? '',
+          exported: (m['e'] as bool?) ?? false,
+          permission: (m['pm'] as String?) ?? '',
         );
       }).where((e) => e.packageName.isNotEmpty && e.serviceClass.isNotEmpty).toList();
     } on PlatformException {

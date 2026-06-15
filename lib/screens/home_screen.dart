@@ -43,6 +43,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Map<String, Color> _appColorCache = {};
   ShizukuStatus _shizukuStatus = ShizukuStatus.notInstalled;
   bool _batteryExempt = true;
+  bool _notificationPermissionGranted = true;
   bool _useAppColors = false;
   bool _loading = true;
   final _expandedGroups = <String, bool>{};
@@ -66,6 +67,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       _checkShizuku();
       _checkBatteryOptimization();
+      _checkNotificationPermission();
     }
   }
 
@@ -76,6 +78,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _loadServices();
     await _system.rescheduleAllMonitorWork();
     await _checkBatteryOptimization();
+    await _checkNotificationPermission();
     setState(() => _loading = false);
   }
 
@@ -87,6 +90,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _checkBatteryOptimization() async {
     final exempt = await _system.isBatteryOptimizationExempt();
     if (mounted) setState(() => _batteryExempt = exempt);
+  }
+
+  Future<void> _checkNotificationPermission() async {
+    final granted = await _system.isNotificationPermissionGranted();
+    if (mounted) setState(() => _notificationPermissionGranted = granted);
   }
 
   Future<void> _log(MonitoredService s, AuditEventType type, AuditTrigger trigger,
@@ -261,14 +269,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     Workmanager().cancelByTag(service.workTag);
   }
 
-  Future<void> _addService() async {
-    final result = await Navigator.push<MonitoredService>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ServicePickerScreen(alreadyMonitored: _services, manager: _manager),
-      ),
-    );
-    if (result == null) return;
+  Future<void> _onServicePicked(MonitoredService result) async {
     final prefs = await SharedPreferences.getInstance();
     final defaultInterval = prefs.getInt('default_check_interval') ?? 15;
     final service = result.copyWith(intervalMinutes: defaultInterval);
@@ -276,6 +277,33 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _log(service, AuditEventType.added, AuditTrigger.manual);
     await _loadServices();
     await _scheduleWork(service);
+  }
+
+  Future<void> _addServiceForApp(String packageName) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ServicePickerScreen(
+          alreadyMonitored: _services,
+          manager: _manager,
+          initialQuery: packageName,
+          onServiceAdded: _onServicePicked,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _addService() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ServicePickerScreen(
+          alreadyMonitored: _services,
+          manager: _manager,
+          onServiceAdded: _onServicePicked,
+        ),
+      ),
+    );
   }
 
   Future<void> _configureService(MonitoredService service) async {
@@ -621,6 +649,68 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  Widget _buildNotificationPermissionBanner() {
+    if (_notificationPermissionGranted) return const SizedBox.shrink();
+    return GestureDetector(
+      onTap: () async {
+        await _system.requestNotificationPermission();
+        await _checkNotificationPermission();
+      },
+      child: Container(
+        color: Colors.amber.withValues(alpha: 0.15),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: const Row(children: [
+          Icon(Icons.notifications_off, color: Colors.amber, size: 18),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Notification permission required — restart alerts won\'t appear',
+              style: TextStyle(color: Colors.amber, fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+          ),
+          Text('Tap to fix →', style: TextStyle(color: Colors.amber, fontSize: 12)),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _toggleAppNotifications(List<MonitoredService> services, String appName) async {
+    final allOn = services.every((s) => s.notificationsEnabled);
+    setState(() {
+      _services = _services.map((s) => services.contains(s)
+          ? s.copyWith(notificationsEnabled: !allOn)
+          : s).toList();
+    });
+    for (final s in services) {
+      await _storage.updateService(s.copyWith(notificationsEnabled: !allOn));
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(allOn
+            ? 'Notifications disabled for $appName'
+            : 'Notifications enabled for $appName'),
+        duration: const Duration(seconds: 2),
+      ));
+    }
+  }
+
+  Future<void> _toggleServiceNotification(MonitoredService service) async {
+    final nowEnabled = !service.notificationsEnabled;
+    final updated = service.copyWith(notificationsEnabled: nowEnabled);
+    setState(() {
+      _services = _services.map((s) => s == service ? updated : s).toList();
+    });
+    await _storage.updateService(updated);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(nowEnabled
+            ? 'Notifications enabled for ${service.displayLabel}'
+            : 'Notifications disabled for ${service.displayLabel}'),
+        duration: const Duration(seconds: 2),
+      ));
+    }
+  }
+
   List<(String pkg, String appName, List<MonitoredService> services)> _groupedServices() {
     final groups = <String, List<MonitoredService>>{};
     for (final s in _services) {
@@ -628,7 +718,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     final result = groups.entries.map((e) {
       final name = _appNameCache[e.key] ?? e.key.split('.').last;
-      return (e.key, name, e.value);
+      final sorted = [...e.value]
+        ..sort((a, b) => a.displayLabel.toLowerCase().compareTo(b.displayLabel.toLowerCase()));
+      return (e.key, name, sorted);
     }).toList();
     result.sort((a, b) => a.$2.toLowerCase().compareTo(b.$2.toLowerCase()));
     return result;
@@ -676,6 +768,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           : Column(children: [
               _buildShizukuBanner(),
               _buildBatteryBanner(),
+              _buildNotificationPermissionBanner(),
               Expanded(
                 child: _services.isEmpty
                     ? _buildEmptyState()
@@ -701,6 +794,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                       }),
                                       onRestartAll: () => _restartAll(services),
                                       onViewHistory: () => _viewAppHistory(pkg, appName),
+                                      onToggleNotifications: () => _toggleAppNotifications(services, appName),
+                                      notificationsEnabled: services.every((s) => s.notificationsEnabled),
+                                      onAddServices: () => _addServiceForApp(pkg),
                                     ),
                                   ),
                                   if (_expandedGroups[pkg] == true)
@@ -746,6 +842,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                                       onRemove: () => _removeService(s),
                                                       onRestartNow: () => _restartNow(s),
                                                       onCheckDue: () => _checkDue(s),
+                                                      onToggleNotifications: () => _toggleServiceNotification(s),
                                                       onViewHistory: () => Navigator.push(
                                                         context,
                                                         MaterialPageRoute(
@@ -823,6 +920,9 @@ class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
   final VoidCallback onTap;
   final VoidCallback onRestartAll;
   final VoidCallback onViewHistory;
+  final VoidCallback onToggleNotifications;
+  final bool notificationsEnabled;
+  final VoidCallback onAddServices;
 
   const _GroupHeaderDelegate({
     required this.packageName,
@@ -834,6 +934,9 @@ class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.onTap,
     required this.onRestartAll,
     required this.onViewHistory,
+    required this.onToggleNotifications,
+    required this.notificationsEnabled,
+    required this.onAddServices,
   });
 
   @override
@@ -936,16 +1039,50 @@ class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
                         child: Icon(Icons.check_circle,
                             color: appColor != null ? fg : Colors.green, size: 18),
                       ),
+                    Padding(
+                      padding: const EdgeInsets.only(right: 4),
+                      child: Icon(
+                        notificationsEnabled ? Icons.notifications : Icons.notifications_off,
+                        size: 18,
+                        color: notificationsEnabled
+                            ? (appColor != null ? fg : theme.colorScheme.primary)
+                            : (appColor != null
+                                ? fg.withValues(alpha: 0.45)
+                                : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+                      ),
+                    ),
                     PopupMenuButton<String>(
                       icon: Icon(Icons.more_vert, size: 20, color: fg),
                       padding: EdgeInsets.zero,
                       onSelected: (v) {
+                        if (v == 'add_services') onAddServices();
                         if (v == 'restart_all') onRestartAll();
                         if (v == 'view_history') onViewHistory();
+                        if (v == 'toggle_notifications') onToggleNotifications();
                       },
-                      itemBuilder: (_) => const [
-                        PopupMenuItem(value: 'restart_all', child: Text('Restart all')),
-                        PopupMenuItem(value: 'view_history', child: Text('View history')),
+                      itemBuilder: (_) => [
+                        const PopupMenuItem(value: 'add_services', child: Text('Add services')),
+                        const PopupMenuItem(value: 'restart_all', child: Text('Restart all')),
+                        const PopupMenuItem(value: 'view_history', child: Text('View history')),
+                        PopupMenuItem(
+                          value: 'toggle_notifications',
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Notifications'),
+                              IgnorePointer(
+                                child: Transform.scale(
+                                  scale: 0.8,
+                                  alignment: Alignment.centerRight,
+                                  child: Switch(
+                                    value: notificationsEnabled,
+                                    onChanged: (_) {},
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                     AnimatedRotation(
@@ -968,5 +1105,7 @@ class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
       old.expanded != expanded ||
       old.appColor != appColor ||
       old.iconBytes != iconBytes ||
-      old.services != services;
+      old.services != services ||
+      old.notificationsEnabled != notificationsEnabled ||
+      old.onAddServices != onAddServices;
 }
