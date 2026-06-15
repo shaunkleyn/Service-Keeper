@@ -121,6 +121,80 @@ class MainActivity : FlutterActivity() {
                     KeeperForegroundService.stop(applicationContext)
                     result.success(null)
                 }
+                "scheduleMonitorWork" -> {
+                    val pkg = call.argument<String>("packageName")
+                    val cls = call.argument<String>("serviceClass")
+                    val label = call.argument<String>("displayLabel")
+                    val interval = call.argument<Int>("intervalMinutes") ?: 15
+                    if (pkg == null || cls == null || label == null) {
+                        result.error("INVALID_ARGS", "packageName/serviceClass/displayLabel required", null)
+                        return@setMethodCallHandler
+                    }
+
+                    val tag = "${pkg}_${cls.replace('.', '_')}"
+                    val data = androidx.work.Data.Builder()
+                        .putString("packageName", pkg)
+                        .putString("serviceClass", cls)
+                        .putString("displayLabel", label)
+                        .putLong("intervalMinutes", interval.toLong())
+                        .putBoolean("selfChain", interval < 15)
+                        .build()
+
+                    if (interval >= 15) {
+                        MonitorWorker.schedule(applicationContext, tag, interval.toLong(), data)
+                    } else {
+                        MonitorWorker.scheduleOnce(applicationContext, tag, interval.toLong(), data)
+                    }
+                    result.success(null)
+                }
+                "cancelMonitorWork" -> {
+                    val workTag = call.argument<String>("workTag")
+                    if (workTag == null) {
+                        result.error("INVALID_ARGS", "workTag required", null)
+                        return@setMethodCallHandler
+                    }
+                    MonitorWorker.cancel(applicationContext, workTag)
+                    result.success(null)
+                }
+                "rescheduleAllMonitorWork" -> {
+                    MonitorWorker.scheduleAllFromPrefs(applicationContext)
+                    result.success(null)
+                }
+                "runMonitorNowForAll" -> {
+                    val prefs = applicationContext.getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+                    val raw = prefs.getString("flutter.monitored_services", null)
+                    if (raw == null) {
+                        result.success(0)
+                        return@setMethodCallHandler
+                    }
+
+                    var count = 0
+                    try {
+                        val arr = org.json.JSONArray(raw)
+                        for (i in 0 until arr.length()) {
+                            val obj = arr.getJSONObject(i)
+                            if (!obj.optBoolean("enabled", true)) continue
+                            val pkg = obj.getString("packageName")
+                            val cls = obj.getString("serviceClass")
+                            val label = obj.getString("displayLabel")
+                            val tag = "${pkg}_${cls.replace('.', '_')}"
+
+                            val data = androidx.work.Data.Builder()
+                                .putString("packageName", pkg)
+                                .putString("serviceClass", cls)
+                                .putString("displayLabel", label)
+                                .putLong("intervalMinutes", obj.optInt("intervalMinutes", 15).toLong())
+                                .putBoolean("selfChain", false)
+                                .build()
+
+                            MonitorWorker.runNow(applicationContext, tag, data)
+                            count++
+                        }
+                    } catch (_: Exception) {
+                        // Return how many jobs were enqueued before failure.
+                    }
+                    result.success(count)
+                }
                 else -> result.notImplemented()
             }
         }

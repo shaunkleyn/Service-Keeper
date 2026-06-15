@@ -67,7 +67,9 @@ class ServiceManager {
       'dumpsys activity services ${service.packageName}',
     );
     if (output == null) return null;
-    return output.contains(service.serviceClass);
+    return _parseDumpsys(output).any(
+      (s) => s.packageName == service.packageName && s.serviceClass == service.serviceClass,
+    );
   }
 
   /// Start (or restart) a service. Returns (success, errorReason); errorReason is null on success.
@@ -80,7 +82,7 @@ class ServiceManager {
         'am startservice -n ${service.fullServiceName}',
       );
       if (fallback != null && !fallback.contains('Error')) {
-        return (true, 'restart method: direct startservice');
+        return (true, null);
       }
 
       // If direct start is blocked by app export/permission rules,
@@ -94,7 +96,7 @@ class ServiceManager {
       if (broadcastReason == null || broadcastReason.isEmpty) return (false, reason);
       return (false, '$reason; broadcast fallback failed: $broadcastReason');
     }
-    return (true, 'restart method: direct start-foreground-service');
+    return (true, null);
   }
 
   Future<(bool, String?)> _tryBroadcastStartFallback(MonitoredService service) async {

@@ -65,7 +65,7 @@ class _ServiceAuditScreenState extends State<ServiceAuditScreen> {
 
   Widget _buildEventTile(AuditEvent e) {
     final (icon, color) = _iconAndColor(e.eventType);
-    final usedBroadcastFallback =
+    final usedBroadcastFallback = e.eventType == AuditEventType.restartSuccess &&
         (e.notes ?? '').toLowerCase().contains('broadcast fallback');
     return ListTile(
       dense: true,
@@ -125,7 +125,9 @@ class _ServiceAuditScreenState extends State<ServiceAuditScreen> {
           if (widget._serviceClass == null)
             Text(e.displayLabel,
                 style: const TextStyle(fontSize: 10, color: Colors.grey)),
-          if (e.notes != null && e.notes!.isNotEmpty)
+          if (e.notes != null &&
+              e.notes!.isNotEmpty &&
+              e.eventType == AuditEventType.restartFailed)
             Padding(
               padding: const EdgeInsets.only(top: 2),
               child: Text(

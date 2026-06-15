@@ -73,6 +73,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _checkShizuku();
     await _loadColorPreference();
     await _loadServices();
+    await _system.rescheduleAllMonitorWork();
     await _checkBatteryOptimization();
     setState(() => _loading = false);
   }
@@ -187,13 +188,46 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _storage.saveServices(updated);
   }
 
-  void _scheduleWork(MonitoredService service) {
-    if (!service.enabled) {
-      Workmanager().cancelByTag(service.workTag);
+  Future<void> _runMonitorNow() async {
+    if (_shizukuStatus != ShizukuStatus.ready) {
+      _showShizukuWarning();
       return;
     }
+    final enabledCount = _services.where((s) => s.enabled).length;
+    if (enabledCount == 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('No enabled services to check')));
+      }
+      return;
+    }
+
+    final queued = await _system.runMonitorNowForAll();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Triggered monitor now for $queued service${queued == 1 ? '' : 's'}')),
+    );
+  }
+
+  Future<void> _scheduleWork(MonitoredService service) async {
+    if (!service.enabled) {
+      Workmanager().cancelByTag(service.workTag);
+      await _system.cancelMonitorWork(service.workTag);
+      return;
+    }
+
+    await _system.scheduleMonitorWork(
+      packageName: service.packageName,
+      serviceClass: service.serviceClass,
+      displayLabel: service.displayLabel,
+      intervalMinutes: service.intervalMinutes,
+    );
+
+    // Keep plugin work cancelled; native MonitorWorker performs the actual checks/restarts.
+    Workmanager().cancelByTag(service.workTag);
+
     if (service.intervalMinutes >= 15) {
-      Workmanager().registerPeriodicTask(
+      await Workmanager().registerPeriodicTask(
         service.workTag,
         'serviceCheck',
         tag: service.workTag,
@@ -207,7 +241,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         existingWorkPolicy: ExistingPeriodicWorkPolicy.replace,
       );
     } else {
-      Workmanager().registerOneOffTask(
+      await Workmanager().registerOneOffTask(
         '${service.workTag}_once',
         'serviceCheck',
         tag: service.workTag,
@@ -221,6 +255,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         },
       );
     }
+
+    // Cancel plugin work after registration attempt; use native worker as source of truth.
+    Workmanager().cancelByTag(service.workTag);
   }
 
   Future<void> _addService() async {
@@ -234,7 +271,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _storage.addService(result);
     await _log(result, AuditEventType.added, AuditTrigger.manual);
     await _loadServices();
-    _scheduleWork(result);
+    await _scheduleWork(result);
   }
 
   Future<void> _configureService(MonitoredService service) async {
@@ -245,7 +282,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (updated == null) return;
     await _storage.updateService(updated);
     await _loadServices();
-    _scheduleWork(updated);
+    await _scheduleWork(updated);
   }
 
   Future<void> _toggleService(MonitoredService service) async {
@@ -254,7 +291,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _log(updated, updated.enabled ? AuditEventType.enabled : AuditEventType.disabled,
         AuditTrigger.manual);
     await _loadServices();
-    _scheduleWork(updated);
+    await _scheduleWork(updated);
   }
 
   Future<void> _removeService(MonitoredService service) async {
@@ -275,6 +312,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
     if (ok != true) return;
     Workmanager().cancelByTag(service.workTag);
+    await _system.cancelMonitorWork(service.workTag);
     await _storage.removeService(service);
     await _log(service, AuditEventType.removed, AuditTrigger.manual);
     await _loadServices();
@@ -606,6 +644,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       appBar: AppBar(
         title: const Text('Service Keeper'),
         actions: [
+          if (_shizukuStatus == ShizukuStatus.ready)
+            IconButton(
+              icon: const Icon(Icons.play_circle_outline),
+              tooltip: 'Run monitor now',
+              onPressed: _runMonitorNow,
+            ),
           if (_shizukuStatus == ShizukuStatus.ready)
             IconButton(
               icon: const Icon(Icons.refresh),

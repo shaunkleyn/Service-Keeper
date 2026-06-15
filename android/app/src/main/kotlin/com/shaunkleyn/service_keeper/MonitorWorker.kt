@@ -55,6 +55,19 @@ class MonitorWorker(context: Context, params: WorkerParameters) :
             WorkManager.getInstance(context).cancelAllWorkByTag(workTag)
         }
 
+        fun runNow(context: Context, workTag: String, inputData: Data) {
+            val request = OneTimeWorkRequestBuilder<MonitorWorker>()
+                .addTag(workTag)
+                .setInputData(inputData)
+                .build()
+
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                "${workTag}_now",
+                ExistingWorkPolicy.REPLACE,
+                request
+            )
+        }
+
         fun scheduleAllFromPrefs(context: Context) {
             val prefs: SharedPreferences =
                 context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -100,12 +113,12 @@ class MonitorWorker(context: Context, params: WorkerParameters) :
         if (!running) {
             appendAuditEvent(pkg, cls, label, "DETECTED_STOPPED", "AUTOMATIC", null)
             appendAuditEvent(pkg, cls, label, "RESTART_ATTEMPTED", "AUTOMATIC", null)
-            val ok = ShizukuExecutor.startService(pkg, cls)
-            if (ok) {
-                appendAuditEvent(pkg, cls, label, "RESTART_SUCCESS", "AUTOMATIC", null)
+            val start = ShizukuExecutor.startServiceDetailed(pkg, cls)
+            if (start.ok) {
+                appendAuditEvent(pkg, cls, label, "RESTART_SUCCESS", "AUTOMATIC", start.detail)
                 sendNotification(label, "Restarted $label — service was not running.")
             } else {
-                appendAuditEvent(pkg, cls, label, "RESTART_FAILED", "AUTOMATIC", null)
+                appendAuditEvent(pkg, cls, label, "RESTART_FAILED", "AUTOMATIC", start.detail)
             }
         }
 
