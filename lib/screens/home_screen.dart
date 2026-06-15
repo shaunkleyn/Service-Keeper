@@ -687,91 +687,94 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         child: CustomScrollView(
                           physics: const AlwaysScrollableScrollPhysics(),
                           slivers: [
-                            for (final (pkg, appName, services) in _groupedServices()) ...[
-                              SliverPersistentHeader(
-                                pinned: true,
-                                delegate: _GroupHeaderDelegate(
-                                  packageName: pkg,
-                                  appName: appName,
-                                  iconBytes: _iconCache[pkg],
-                                  services: services,
-                                  expanded: _expandedGroups[pkg] ?? false,
-                                  appColor: _useAppColors ? _appColorCache[pkg] : null,
-                                  onTap: () => setState(() {
-                                    _expandedGroups[pkg] = !(_expandedGroups[pkg] ?? false);
-                                  }),
-                                  onRestartAll: () => _restartAll(services),
-                                  onViewHistory: () => _viewAppHistory(pkg, appName),
-                                ),
-                              ),
-                              if (_expandedGroups[pkg] == true)
-                                SliverList(
-                                  delegate: SliverChildBuilderDelegate(
-                                    (ctx, i) {
-                                      final s = services[i];
-                                      final tileTheme = Theme.of(ctx);
-                                      final isLast = i == services.length - 1;
-                                      final appColor =
-                                          _useAppColors ? _appColorCache[pkg] : null;
-                                      final darkMode =
-                                          tileTheme.brightness == Brightness.dark;
-                                      final bodyBg = appColor == null
-                                          ? tileTheme.colorScheme.surfaceContainerLow
-                                          : Color.alphaBlend(
-                                              appColor.withValues(
-                                                  alpha: darkMode ? 0.22 : 0.10),
-                                              darkMode
-                                                  ? const Color(0xFF1C1C1C)
-                                                  : Colors.white,
-                                            );
-                                      return Padding(
-                                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                                        child: ClipRRect(
-                                          borderRadius: isLast
-                                              ? const BorderRadius.only(
-                                                  bottomLeft: Radius.circular(12),
-                                                  bottomRight: Radius.circular(12),
-                                                )
-                                              : BorderRadius.zero,
-                                          child: ColoredBox(
-                                            color: bodyBg,
-                                            child: Column(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                ServiceTile(
-                                                  service: s,
-                                                  showLeading: false,
-                                                  accentColor: appColor,
-                                                  onToggle: () => _toggleService(s),
-                                                  onConfigure: () => _configureService(s),
-                                                  onRemove: () => _removeService(s),
-                                                  onRestartNow: () => _restartNow(s),
-                                                  onCheckDue: () => _checkDue(s),
-                                                  onViewHistory: () => Navigator.push(
-                                                    context,
-                                                    MaterialPageRoute(
-                                                      builder: (_) =>
-                                                          ServiceAuditScreen(service: s),
-                                                    ),
-                                                  ),
-                                                ),
-                                                if (!isLast)
-                                                  Divider(
-                                                    height: 1,
-                                                    thickness: 1,
-                                                    color: tileTheme.colorScheme.outlineVariant
-                                                        .withValues(alpha: 0.5),
-                                                  ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                    childCount: services.length,
+                            for (final (pkg, appName, services) in _groupedServices())
+                              SliverMainAxisGroup(
+                                slivers: [
+                                  SliverPersistentHeader(
+                                    pinned: _expandedGroups[pkg] == true,
+                                    delegate: _GroupHeaderDelegate(
+                                      packageName: pkg,
+                                      appName: appName,
+                                      iconBytes: _iconCache[pkg],
+                                      services: services,
+                                      expanded: _expandedGroups[pkg] ?? false,
+                                      appColor: _useAppColors ? _appColorCache[pkg] : null,
+                                      onTap: () => setState(() {
+                                        _expandedGroups[pkg] = !(_expandedGroups[pkg] ?? false);
+                                      }),
+                                      onRestartAll: () => _restartAll(services),
+                                      onViewHistory: () => _viewAppHistory(pkg, appName),
+                                    ),
                                   ),
-                                ),
-                            ],
+                                  if (_expandedGroups[pkg] == true)
+                                    SliverList(
+                                      delegate: SliverChildBuilderDelegate(
+                                        (ctx, i) {
+                                          final s = services[i];
+                                          final tileTheme = Theme.of(ctx);
+                                          final isLast = i == services.length - 1;
+                                          final appColor =
+                                              _useAppColors ? _appColorCache[pkg] : null;
+                                          final darkMode =
+                                              tileTheme.brightness == Brightness.dark;
+                                          final bodyBg = appColor == null
+                                              ? tileTheme.colorScheme.surfaceContainerLow
+                                              : Color.alphaBlend(
+                                                  appColor.withValues(
+                                                      alpha: darkMode ? 0.22 : 0.10),
+                                                  darkMode
+                                                      ? const Color(0xFF1C1C1C)
+                                                      : Colors.white,
+                                                );
+                                          return Padding(
+                                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                                            child: ClipRRect(
+                                              borderRadius: isLast
+                                                  ? const BorderRadius.only(
+                                                      bottomLeft: Radius.circular(12),
+                                                      bottomRight: Radius.circular(12),
+                                                    )
+                                                  : BorderRadius.zero,
+                                              child: ColoredBox(
+                                                color: bodyBg,
+                                                child: Column(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    ServiceTile(
+                                                      service: s,
+                                                      showLeading: false,
+                                                      accentColor: appColor,
+                                                      onToggle: () => _toggleService(s),
+                                                      onConfigure: () => _configureService(s),
+                                                      onRemove: () => _removeService(s),
+                                                      onRestartNow: () => _restartNow(s),
+                                                      onCheckDue: () => _checkDue(s),
+                                                      onViewHistory: () => Navigator.push(
+                                                        context,
+                                                        MaterialPageRoute(
+                                                          builder: (_) =>
+                                                              ServiceAuditScreen(service: s),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    if (!isLast)
+                                                      Divider(
+                                                        height: 1,
+                                                        thickness: 1,
+                                                        color: tileTheme.colorScheme.outlineVariant
+                                                            .withValues(alpha: 0.5),
+                                                      ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                        childCount: services.length,
+                                      ),
+                                    ),
+                                ],
+                              ),
                             const SliverToBoxAdapter(child: SizedBox(height: 80)),
                           ],
                         ),
