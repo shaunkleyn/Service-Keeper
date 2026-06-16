@@ -6,7 +6,12 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.database.ContentObserver
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
+import java.util.Collections
+import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import org.json.JSONArray
 import org.json.JSONObject
@@ -23,6 +28,10 @@ class KeeperForegroundService : Service() {
         private const val EXTRA_COUNT = "serviceCount"
         private const val PREFS_NAME = "FlutterSharedPreferences"
         private const val SERVICES_KEY = "flutter.monitored_services"
+        private const val A11Y_KEY = "flutter.a11y_monitored"
+        private const val NOTIF_LISTENER_KEY = "flutter.notif_monitored"
+        private const val A11Y_NOTIF_OFF_KEY = "flutter.a11y_notif_off"
+        private const val NOTIF_LISTENER_NOTIF_OFF_KEY = "flutter.notif_listener_notif_off"
         private const val AUDIT_KEY = "flutter.pending_audit_events"
         private var notifId = 2000
 
@@ -47,14 +56,40 @@ class KeeperForegroundService : Service() {
     private var currentCount = 0
     @Volatile private var logcatProcess: Process? = null
     private var logcatThread: Thread? = null
+    private var a11yObserver: ContentObserver? = null
+    private var notifObserver: ContentObserver? = null
+
+    // Debounced grouped notification for logcat-triggered service restarts
+    private val pendingServiceNotifs: MutableList<String> = Collections.synchronizedList(mutableListOf())
+    private val notifDebounceHandler = Handler(Looper.getMainLooper())
+    private val flushServiceNotifs = Runnable {
+        val items = synchronized(pendingServiceNotifs) {
+            val copy = pendingServiceNotifs.toList()
+            pendingServiceNotifs.clear()
+            copy
+        }
+        if (items.isEmpty()) return@Runnable
+        val distinct = items.distinct()
+        if (items.size == 1) {
+            sendNotification(distinct[0], "Background service was stopped and has been restarted.")
+        } else if (distinct.size == 1) {
+            sendNotification(distinct[0], "${items.size} background services were stopped and have been restarted.")
+        } else {
+            sendNotification("Service Keeper", "${items.size} background services restarted: ${distinct.joinToString(", ")}.")
+        }
+    }
 
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
         startLogcatMonitor()
+        checkAccessibilityServices()
+        checkNotificationListeners()
     }
 
     override fun onCreate() {
         super.onCreate()
         Shizuku.addBinderReceivedListenerSticky(binderReceivedListener)
+        startA11yObserver()
+        startNotifObserver()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -69,9 +104,202 @@ class KeeperForegroundService : Service() {
         super.onDestroy()
         Shizuku.removeBinderReceivedListener(binderReceivedListener)
         stopLogcatMonitor()
+        stopA11yObserver()
+        stopNotifObserver()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    // ── Accessibility service guardian ────────────────────────────────────────
+
+    private fun startA11yObserver() {
+        val uri = Settings.Secure.getUriFor("enabled_accessibility_services")
+        a11yObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                checkAccessibilityServices()
+            }
+        }
+        contentResolver.registerContentObserver(uri, false, a11yObserver!!)
+    }
+
+    private fun stopA11yObserver() {
+        a11yObserver?.let { contentResolver.unregisterContentObserver(it) }
+        a11yObserver = null
+    }
+
+    private fun checkAccessibilityServices() {
+        if (!ShizukuExecutor.isReady()) return
+        Thread {
+            try {
+                val current = ShizukuExecutor.exec(
+                    "settings get secure enabled_accessibility_services"
+                )?.trim()?.takeIf { it.isNotEmpty() && it != "null" } ?: return@Thread
+
+                val enabledSet = current.split(":").mapNotNull { entry ->
+                    val slash = entry.indexOf('/'); if (slash < 0) return@mapNotNull null
+                    val p = entry.substring(0, slash)
+                    var c = entry.substring(slash + 1)
+                    if (c.startsWith(".")) c = p + c
+                    "$p/$c"
+                }.toSet()
+
+                val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                val raw = prefs.getString(A11Y_KEY, null) ?: return@Thread
+                val arr = JSONArray(raw)
+
+                val notifOffRaw = prefs.getString(A11Y_NOTIF_OFF_KEY, "[]")
+                val notifOffArr = JSONArray(notifOffRaw)
+                val notifOffSet = (0 until notifOffArr.length()).map { notifOffArr.getString(it) }.toSet()
+
+                var updated = current
+                val a11yNotifApps = mutableListOf<String>()
+                for (i in 0 until arr.length()) {
+                    val key = arr.getString(i)
+                    val slash = key.indexOf('/'); if (slash < 0) continue
+                    val pkg = key.substring(0, slash)
+                    val cls = key.substring(slash + 1)
+                    if (enabledSet.contains("$pkg/$cls")) continue
+
+                    val label = cls.substringAfterLast('.')
+                    updated = "$updated:$pkg/$cls"
+                    appendAuditEvent(pkg, cls, label, "DETECTED_STOPPED", "AUTOMATIC", "accessibility disabled by system")
+                    appendAuditEvent(pkg, cls, label, "RESTART_ATTEMPTED", "AUTOMATIC", null)
+                    appendAuditEvent(pkg, cls, label, "RESTART_SUCCESS", "AUTOMATIC", "re-added to enabled_accessibility_services")
+                    if (!notifOffSet.contains("$pkg/$cls")) {
+                        a11yNotifApps.add(getAppName(pkg))
+                    }
+                }
+
+                if (updated != current) {
+                    ShizukuExecutor.exec("settings put secure enabled_accessibility_services $updated")
+                }
+
+                val a11yDistinct = a11yNotifApps.distinct()
+                when {
+                    a11yNotifApps.size == 1 -> sendNotification(a11yDistinct[0], "Accessibility access was revoked and has been re-enabled.")
+                    a11yNotifApps.size > 1 && a11yDistinct.size == 1 -> sendNotification(a11yDistinct[0], "${a11yNotifApps.size} accessibility services re-enabled.")
+                    a11yNotifApps.size > 1 -> sendNotification("Service Keeper", "Accessibility access re-enabled for: ${a11yDistinct.joinToString(", ")}.")
+                }
+            } catch (_: Exception) {}
+        }.start()
+    }
+
+    private fun getAppName(pkg: String): String {
+        return try {
+            val pm = applicationContext.packageManager
+            pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
+        } catch (_: Exception) { pkg }
+    }
+
+    private fun isAccessibilityService(pkg: String, cls: String): Boolean {
+        return try {
+            val pm = applicationContext.packageManager
+            val pkgInfo = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                pm.getPackageInfo(pkg, android.content.pm.PackageManager.PackageInfoFlags.of(
+                    android.content.pm.PackageManager.GET_SERVICES.toLong()
+                ))
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getPackageInfo(pkg, android.content.pm.PackageManager.GET_SERVICES)
+            }
+            pkgInfo.services?.any {
+                it.name == cls && it.permission == "android.permission.BIND_ACCESSIBILITY_SERVICE"
+            } ?: false
+        } catch (_: Exception) { false }
+    }
+
+    // ── Notification listener guardian ───────────────────────────────────────
+
+    private fun startNotifObserver() {
+        val uri = Settings.Secure.getUriFor("enabled_notification_listeners")
+        notifObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                checkNotificationListeners()
+            }
+        }
+        contentResolver.registerContentObserver(uri, false, notifObserver!!)
+    }
+
+    private fun stopNotifObserver() {
+        notifObserver?.let { contentResolver.unregisterContentObserver(it) }
+        notifObserver = null
+    }
+
+    private fun checkNotificationListeners() {
+        if (!ShizukuExecutor.isReady()) return
+        Thread {
+            try {
+                val current = ShizukuExecutor.exec(
+                    "settings get secure enabled_notification_listeners"
+                )?.trim()?.takeIf { it.isNotEmpty() && it != "null" } ?: return@Thread
+
+                val enabledSet = current.split(":").mapNotNull { entry ->
+                    val slash = entry.indexOf('/'); if (slash < 0) return@mapNotNull null
+                    val p = entry.substring(0, slash)
+                    var c = entry.substring(slash + 1)
+                    if (c.startsWith(".")) c = p + c
+                    "$p/$c"
+                }.toSet()
+
+                val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                val raw = prefs.getString(NOTIF_LISTENER_KEY, null) ?: return@Thread
+                val arr = JSONArray(raw)
+
+                val nlNotifOffRaw = prefs.getString(NOTIF_LISTENER_NOTIF_OFF_KEY, "[]")
+                val nlNotifOffArr = JSONArray(nlNotifOffRaw)
+                val nlNotifOffSet = (0 until nlNotifOffArr.length()).map { nlNotifOffArr.getString(it) }.toSet()
+
+                var updated = current
+                val notifListenerApps = mutableListOf<String>()
+                for (i in 0 until arr.length()) {
+                    val key = arr.getString(i)
+                    val slash = key.indexOf('/'); if (slash < 0) continue
+                    val pkg = key.substring(0, slash)
+                    val cls = key.substring(slash + 1)
+                    if (enabledSet.contains("$pkg/$cls")) continue
+
+                    val label = cls.substringAfterLast('.')
+                    updated = "$updated:$pkg/$cls"
+                    appendAuditEvent(pkg, cls, label, "DETECTED_STOPPED", "AUTOMATIC", "notification listener disabled by system")
+                    appendAuditEvent(pkg, cls, label, "RESTART_ATTEMPTED", "AUTOMATIC", null)
+                    appendAuditEvent(pkg, cls, label, "RESTART_SUCCESS", "AUTOMATIC", "re-added to enabled_notification_listeners")
+                    if (!nlNotifOffSet.contains("$pkg/$cls")) {
+                        notifListenerApps.add(getAppName(pkg))
+                    }
+                }
+
+                if (updated != current) {
+                    ShizukuExecutor.exec("settings put secure enabled_notification_listeners $updated")
+                }
+
+                val nlDistinct = notifListenerApps.distinct()
+                when {
+                    notifListenerApps.size == 1 -> sendNotification(nlDistinct[0], "Notification access was revoked and has been re-enabled.")
+                    notifListenerApps.size > 1 && nlDistinct.size == 1 -> sendNotification(nlDistinct[0], "${notifListenerApps.size} notification listeners re-enabled.")
+                    notifListenerApps.size > 1 -> sendNotification("Service Keeper", "Notification access re-enabled for: ${nlDistinct.joinToString(", ")}.")
+                }
+            } catch (_: Exception) {}
+        }.start()
+    }
+
+    private fun isNotificationListener(pkg: String, cls: String): Boolean {
+        return try {
+            val pm = applicationContext.packageManager
+            val pkgInfo = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                pm.getPackageInfo(pkg, android.content.pm.PackageManager.PackageInfoFlags.of(
+                    android.content.pm.PackageManager.GET_SERVICES.toLong()
+                ))
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getPackageInfo(pkg, android.content.pm.PackageManager.GET_SERVICES)
+            }
+            pkgInfo.services?.any {
+                it.name == cls && it.permission == "android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            } ?: false
+        } catch (_: Exception) { false }
+    }
+
+    // ── Logcat service monitor ────────────────────────────────────────────────
 
     @Synchronized
     private fun startLogcatMonitor() {
@@ -194,7 +422,11 @@ class KeeperForegroundService : Service() {
             val result = ShizukuExecutor.startServiceDetailed(pkg, cls)
             if (result.ok) {
                 appendAuditEvent(pkg, cls, label, "RESTART_SUCCESS", "AUTOMATIC", result.detail)
-                if (notifEnabled) sendNotification(label, "Restarted $label — service was not running.")
+                if (notifEnabled) {
+                    pendingServiceNotifs.add(getAppName(pkg))
+                    notifDebounceHandler.removeCallbacks(flushServiceNotifs)
+                    notifDebounceHandler.postDelayed(flushServiceNotifs, 1500)
+                }
             } else {
                 appendAuditEvent(pkg, cls, label, "RESTART_FAILED", "AUTOMATIC", result.detail)
             }
