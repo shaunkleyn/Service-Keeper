@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:workmanager/workmanager.dart';
-import 'screens/home_screen.dart';
+import 'screens/main_shell.dart';
 
 @pragma('vm:entry-point')
 void callbackDispatcher() {
@@ -72,7 +72,7 @@ class ServiceKeeperApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: const HomeScreen(),
+      home: const MainShell(),
     );
   }
 }

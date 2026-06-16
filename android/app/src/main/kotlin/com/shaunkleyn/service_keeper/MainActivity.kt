@@ -203,6 +203,18 @@ class MainActivity : FlutterActivity() {
                     }
                     result.success(count)
                 }
+                "getEnabledAccessibilityServices" -> {
+                    val raw = android.provider.Settings.Secure.getString(
+                        contentResolver, "enabled_accessibility_services"
+                    )
+                    result.success(raw ?: "")
+                }
+                "getEnabledNotificationListeners" -> {
+                    val raw = android.provider.Settings.Secure.getString(
+                        contentResolver, "enabled_notification_listeners"
+                    )
+                    result.success(raw ?: "")
+                }
                 "checkNotificationPermission" -> {
                     result.success(
                         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU)

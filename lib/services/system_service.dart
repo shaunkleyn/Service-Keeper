@@ -77,6 +77,40 @@ class SystemService {
     }
   }
 
+  Future<Set<String>> getEnabledAccessibilityServices() async {
+    try {
+      final raw = await _channel.invokeMethod<String>('getEnabledAccessibilityServices') ?? '';
+      if (raw.isEmpty) return {};
+      return raw.split(':').map((e) {
+        final slash = e.indexOf('/');
+        if (slash < 0) return e;
+        final pkg = e.substring(0, slash);
+        var cls = e.substring(slash + 1);
+        if (cls.startsWith('.')) cls = pkg + cls;
+        return '$pkg/$cls';
+      }).toSet();
+    } on PlatformException {
+      return {};
+    }
+  }
+
+  Future<Set<String>> getEnabledNotificationListeners() async {
+    try {
+      final raw = await _channel.invokeMethod<String>('getEnabledNotificationListeners') ?? '';
+      if (raw.isEmpty) return {};
+      return raw.split(':').map((e) {
+        final slash = e.indexOf('/');
+        if (slash < 0) return e;
+        final pkg = e.substring(0, slash);
+        var cls = e.substring(slash + 1);
+        if (cls.startsWith('.')) cls = pkg + cls;
+        return '$pkg/$cls';
+      }).toSet();
+    } on PlatformException {
+      return {};
+    }
+  }
+
   Future<bool> isNotificationPermissionGranted() async {
     try {
       return await _channel.invokeMethod<bool>('checkNotificationPermission') ?? true;

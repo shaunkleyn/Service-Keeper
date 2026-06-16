@@ -186,6 +186,14 @@ class _ServicePickerScreenState extends State<ServicePickerScreen> {
     });
   }
 
+  Future<void> _addAllRunning(_Section section) async {
+    final toAdd = section.services.where((s) => s.isRunning && !_isMonitored(s)).toList();
+    for (final s in toAdd) {
+      await _pick(s);
+      if (!mounted) return;
+    }
+  }
+
   String _labelFor(RunningService s) {
     if (s.packageName.contains('life360')) return 'Life360';
     return s.serviceClass.split('.').last;
@@ -228,6 +236,13 @@ class _ServicePickerScreenState extends State<ServicePickerScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Select Service'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh services',
+            onPressed: _loading ? null : _load,
+          ),
+        ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(56),
           child: Padding(
@@ -364,7 +379,29 @@ class _ServicePickerScreenState extends State<ServicePickerScreen> {
                 style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
           ),
       ]),
-      children: section.services.map(_buildServiceTile).toList(),
+      children: [
+        if (!section.isMonitoredGroup && section.runningCount > 0)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: SizedBox(
+              width: double.infinity,
+              child: FilledButton.tonal(
+                onPressed: () => _addAllRunning(section),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.playlist_add, size: 18),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Monitor ${section.runningCount} running service${section.runningCount == 1 ? '' : 's'}',
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ...section.services.map(_buildServiceTile),
+      ],
     );
   }
 

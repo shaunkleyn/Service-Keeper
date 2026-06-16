@@ -19,6 +19,8 @@ class MonitorWorker(context: Context, params: WorkerParameters) :
         private const val AUDIT_KEY = "flutter.pending_audit_events"
         private const val CHANNEL_ID = "service_keeper_restarts"
         private const val CHANNEL_NAME = "Service Restarts"
+        private const val GROUP_KEY = "com.shaunkleyn.service_keeper.RESTARTS"
+        private const val SUMMARY_ID = 999
         private var notifId = 1000
 
         fun schedule(context: Context, workTag: String, intervalMinutes: Long, inputData: Data) {
@@ -80,12 +82,14 @@ class MonitorWorker(context: Context, params: WorkerParameters) :
                     val pkg = obj.getString("packageName")
                     val cls = obj.getString("serviceClass")
                     val label = obj.getString("displayLabel")
+                    val appName = obj.optString("appName", label)
                     val interval = obj.optInt("intervalMinutes", 15).toLong()
                     val tag = "${pkg}_${cls.replace('.', '_')}"
                     val data = Data.Builder()
                         .putString("packageName", pkg)
                         .putString("serviceClass", cls)
                         .putString("displayLabel", label)
+                        .putString("appName", appName)
                         .putLong("intervalMinutes", interval)
                         .putBoolean("selfChain", interval < 15)
                         .build()
@@ -104,6 +108,7 @@ class MonitorWorker(context: Context, params: WorkerParameters) :
         val pkg = inputData.getString("packageName") ?: return Result.failure()
         val cls = inputData.getString("serviceClass") ?: return Result.failure()
         val label = inputData.getString("displayLabel") ?: pkg
+        val appName = inputData.getString("appName") ?: label
         val selfChain = inputData.getBoolean("selfChain", false)
         val intervalMinutes = inputData.getLong("intervalMinutes", 15L)
 
@@ -117,7 +122,7 @@ class MonitorWorker(context: Context, params: WorkerParameters) :
             if (start.ok) {
                 appendAuditEvent(pkg, cls, label, "RESTART_SUCCESS", "AUTOMATIC", start.detail)
                 if (notificationsEnabledFor(pkg, cls)) {
-                    sendNotification(label, "Restarted $label — service was not running.")
+                    sendNotification(appName, "Background service was stopped and has been restarted.")
                 }
             } else {
                 appendAuditEvent(pkg, cls, label, "RESTART_FAILED", "AUTOMATIC", start.detail)
@@ -192,8 +197,19 @@ class MonitorWorker(context: Context, params: WorkerParameters) :
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setContentIntent(tapIntent)
             .setAutoCancel(true)
+            .setGroup(GROUP_KEY)
             .build()
 
         nm.notify(notifId++, notif)
+
+        val summary = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_menu_manage)
+            .setContentTitle("Service Keeper")
+            .setContentText("Service restarts")
+            .setGroup(GROUP_KEY)
+            .setGroupSummary(true)
+            .setAutoCancel(true)
+            .build()
+        nm.notify(SUMMARY_ID, summary)
     }
 }

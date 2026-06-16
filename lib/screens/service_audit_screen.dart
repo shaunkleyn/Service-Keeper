@@ -3,15 +3,19 @@ import '../models/audit_event.dart';
 import '../models/monitored_service.dart';
 import '../services/database_service.dart';
 
+enum AuditCategory { service, accessibility, notification }
+
 class ServiceAuditScreen extends StatefulWidget {
   final String _packageName;
   final String? _serviceClass;
   final String _title;
+  final AuditCategory _category;
 
   ServiceAuditScreen({super.key, required MonitoredService service})
       : _packageName = service.packageName,
         _serviceClass = service.serviceClass,
-        _title = '${service.displayLabel} — History';
+        _title = '${service.displayLabel} — History',
+        _category = AuditCategory.service;
 
   const ServiceAuditScreen.forApp({
     super.key,
@@ -19,7 +23,28 @@ class ServiceAuditScreen extends StatefulWidget {
     required String appName,
   })  : _packageName = packageName,
         _serviceClass = null,
-        _title = '$appName — History';
+        _title = '$appName — History',
+        _category = AuditCategory.service;
+
+  const ServiceAuditScreen.forAccessibility({
+    super.key,
+    required String packageName,
+    required String serviceClass,
+    required String appName,
+  })  : _packageName = packageName,
+        _serviceClass = serviceClass,
+        _title = '$appName — Accessibility History',
+        _category = AuditCategory.accessibility;
+
+  const ServiceAuditScreen.forNotification({
+    super.key,
+    required String packageName,
+    required String serviceClass,
+    required String appName,
+  })  : _packageName = packageName,
+        _serviceClass = serviceClass,
+        _title = '$appName — Notification History',
+        _category = AuditCategory.notification;
 
   @override
   State<ServiceAuditScreen> createState() => _ServiceAuditScreenState();
@@ -37,6 +62,7 @@ class _ServiceAuditScreenState extends State<ServiceAuditScreen> {
   }
 
   Future<void> _load() async {
+    await _db.importPendingEvents();
     final events = await _db.getEvents(
       packageName: widget._packageName,
       serviceClass: widget._serviceClass,
@@ -63,6 +89,17 @@ class _ServiceAuditScreenState extends State<ServiceAuditScreen> {
     );
   }
 
+  String _eventLabel(AuditEventType t) {
+    if (widget._category == AuditCategory.service) return t.label;
+    return switch (t) {
+      AuditEventType.detectedStopped => 'Access revoked',
+      AuditEventType.restartAttempted => 'Re-enable attempted',
+      AuditEventType.restartSuccess => 'Access re-enabled',
+      AuditEventType.restartFailed => 'Re-enable failed',
+      _ => t.label,
+    };
+  }
+
   Widget _buildEventTile(AuditEvent e) {
     final (icon, color) = _iconAndColor(e.eventType);
     final usedBroadcastFallback = e.eventType == AuditEventType.restartSuccess &&
@@ -74,7 +111,7 @@ class _ServiceAuditScreenState extends State<ServiceAuditScreen> {
         backgroundColor: color.withValues(alpha: 0.15),
         child: Icon(icon, size: 16, color: color),
       ),
-      title: Text(e.eventType.label,
+      title: Text(_eventLabel(e.eventType),
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
