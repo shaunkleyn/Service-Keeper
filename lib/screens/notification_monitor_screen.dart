@@ -373,9 +373,10 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
                                                       alignment: Alignment.centerRight,
                                                       child: Switch(
                                                         value: monitored,
-                                                        activeThumbColor: appColor,
-                                                        activeTrackColor: appColor
-                                                            ?.withValues(alpha: 0.5),
+                                                        thumbColor: WidgetStateProperty.resolveWith(
+                                                            (s) => s.contains(WidgetState.selected) ? appColor : null),
+                                                        trackColor: WidgetStateProperty.resolveWith(
+                                                            (s) => s.contains(WidgetState.selected) ? appColor?.withValues(alpha: 0.5) : null),
                                                         onChanged: (_) => _toggle(
                                                             pkg,
                                                             svc.serviceClass,
@@ -589,9 +590,10 @@ class _NotifGroupHeaderDelegate extends SliverPersistentHeaderDelegate {
                         alignment: Alignment.centerRight,
                         child: Switch(
                           value: allMonitored,
-                          activeThumbColor: appColor != null ? fg : null,
-                          activeTrackColor:
-                              appColor != null ? fg.withValues(alpha: 0.4) : null,
+                          thumbColor: WidgetStateProperty.resolveWith(
+                              (s) => s.contains(WidgetState.selected) && appColor != null ? fg : null),
+                          trackColor: WidgetStateProperty.resolveWith(
+                              (s) => s.contains(WidgetState.selected) && appColor != null ? fg.withValues(alpha: 0.4) : null),
                           onChanged: (_) => onToggleAll(),
                         ),
                       ),
