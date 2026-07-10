@@ -1,0 +1,517 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../models/audit_event.dart';
+import '../models/monitored_service.dart';
+import '../services/database_service.dart';
+import '../services/shizuku_service.dart';
+import '../services/storage_service.dart';
+import '../services/system_service.dart';
+import 'accessibility_monitor_screen.dart';
+import 'home_screen.dart';
+import 'notification_monitor_screen.dart';
+import 'settings_screen.dart';
+
+class MainShell extends StatefulWidget {
+  const MainShell({super.key});
+
+  @override
+  State<MainShell> createState() => _MainShellState();
+}
+
+class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
+  int _currentIndex = 0;
+  late final PageController _pageController = PageController();
+
+  final _shizuku = ShizukuService();
+  final _system = SystemService();
+  final _storage = StorageService();
+  final _db = DatabaseService();
+
+  ShizukuStatus _shizukuStatus = ShizukuStatus.notInstalled;
+  DateTime? _shizukuReadySince;
+  Timer? _durationTimer;
+  bool _batteryExempt = true;
+  bool _notificationPermissionGranted = true;
+
+  final _refreshCallbacks = <int, VoidCallback>{};
+  VoidCallback? _runMonitorNow;
+  VoidCallback? _checkStatuses;
+  VoidCallback? _addService;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _init();
+  }
+
+  @override
+  void dispose() {
+    _durationTimer?.cancel();
+    _pageController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkShizuku();
+      _checkBatteryOptimization();
+      _checkNotificationPermission();
+    }
+  }
+
+  Future<void> _init() async {
+    await _checkShizuku();
+    await _checkBatteryOptimization();
+    await _checkNotificationPermission();
+  }
+
+  Future<void> _checkShizuku() async {
+    final status = await _shizuku.checkStatus();
+    if (!mounted) return;
+    final prefs = await SharedPreferences.getInstance();
+    if (status == ShizukuStatus.ready) {
+      if (_shizukuReadySince == null) {
+        final stored = prefs.getInt('shizuku_ready_since');
+        final since = stored != null
+            ? DateTime.fromMillisecondsSinceEpoch(stored)
+            : DateTime.now();
+        if (stored == null) {
+          await prefs.setInt('shizuku_ready_since', since.millisecondsSinceEpoch);
+        }
+        setState(() {
+          _shizukuStatus = status;
+          _shizukuReadySince = since;
+        });
+        _durationTimer ??= Timer.periodic(const Duration(seconds: 30), (_) {
+          if (mounted) setState(() {});
+        });
+      } else {
+        setState(() => _shizukuStatus = status);
+      }
+    } else {
+      await prefs.remove('shizuku_ready_since');
+      _durationTimer?.cancel();
+      _durationTimer = null;
+      setState(() {
+        _shizukuStatus = status;
+        _shizukuReadySince = null;
+      });
+    }
+  }
+
+  Future<void> _checkBatteryOptimization() async {
+    final exempt = await _system.isBatteryOptimizationExempt();
+    if (mounted) setState(() => _batteryExempt = exempt);
+  }
+
+  Future<void> _checkNotificationPermission() async {
+    final granted = await _system.isNotificationPermissionGranted();
+    if (mounted) setState(() => _notificationPermissionGranted = granted);
+  }
+
+  Future<void> _requestShizukuPermission() async {
+    await _shizuku.requestPermission();
+    await _checkShizuku();
+  }
+
+  String _formatActiveDuration() {
+    final since = _shizukuReadySince;
+    if (since == null) return '';
+    final d = DateTime.now().difference(since);
+    if (d.inHours > 0) return '${d.inHours}h ${d.inMinutes.remainder(60)}m';
+    if (d.inMinutes > 0) return '${d.inMinutes}m';
+    return 'just now';
+  }
+
+  Widget _buildShizukuBanner() {
+    final color = _shizukuStatus == ShizukuStatus.ready ? Colors.green : Colors.orange;
+    final isReady = _shizukuStatus == ShizukuStatus.ready;
+    final duration = isReady ? _formatActiveDuration() : '';
+    final label = switch (_shizukuStatus) {
+      ShizukuStatus.ready => 'Shizuku active${duration.isNotEmpty ? ' · $duration' : ''}',
+      ShizukuStatus.permissionDenied => 'Shizuku: permission denied',
+      ShizukuStatus.notRunning => 'Shizuku not running',
+      ShizukuStatus.notInstalled => 'Shizuku not installed',
+    };
+    final icon = isReady ? Icons.check_circle : Icons.warning_amber;
+    return GestureDetector(
+      onTap: !isReady ? _showShizukuWarning : null,
+      child: Container(
+        color: color.withValues(alpha: 0.12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 8),
+          Text(label,
+              style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 13)),
+          if (!isReady) ...[
+            const Spacer(),
+            Text('Tap to fix →', style: TextStyle(color: color, fontSize: 12)),
+          ],
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildBatteryBanner() {
+    if (_batteryExempt) return const SizedBox.shrink();
+    return GestureDetector(
+      onTap: () async => _system.requestBatteryOptimizationExemption(),
+      child: Container(
+        color: Colors.deepOrange.withValues(alpha: 0.12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: const Row(children: [
+          Icon(Icons.battery_alert, color: Colors.deepOrange, size: 18),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Battery optimization active — checks may be delayed',
+              style: TextStyle(
+                  color: Colors.deepOrange, fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+          ),
+          Text('Tap to fix →', style: TextStyle(color: Colors.deepOrange, fontSize: 12)),
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildNotificationPermissionBanner() {
+    if (_notificationPermissionGranted) return const SizedBox.shrink();
+    return GestureDetector(
+      onTap: () async {
+        await _system.requestNotificationPermission();
+        await _checkNotificationPermission();
+      },
+      child: Container(
+        color: Colors.amber.withValues(alpha: 0.15),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: const Row(children: [
+          Icon(Icons.notifications_off, color: Colors.amber, size: 18),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              "Notification permission required — restart alerts won't appear",
+              style:
+                  TextStyle(color: Colors.amber, fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+          ),
+          Text('Tap to fix →', style: TextStyle(color: Colors.amber, fontSize: 12)),
+        ]),
+      ),
+    );
+  }
+
+  void _showShizukuWarning() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Shizuku Required'),
+        content: const Text(
+          'Shizuku is not active. Please:\n\n'
+          '1. Install Shizuku from Play Store\n'
+          '2. Enable it via Wireless Debugging\n'
+          '   (Developer Options → Wireless debugging)\n'
+          '3. Return to this app',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _requestShizukuPermission();
+            },
+            child: const Text('Grant Permission'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _backup() async {
+    try {
+      final services = await _storage.loadServices();
+      final a11yKeys = await _storage.loadA11yMonitoredKeys();
+      final notifKeys = await _storage.loadNotifMonitoredKeys();
+      final a11yNotifOff = await _storage.loadA11yNotifOffKeys();
+      final notifListenerNotifOff = await _storage.loadNotifListenerNotifOffKeys();
+      final events = await _db.getAllEvents();
+      final now = DateTime.now();
+      final ts =
+          '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}'
+          '_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
+      final data = {
+        'version': 2,
+        'exportedAt': now.toIso8601String(),
+        'services': services.map((s) => s.toJson()).toList(),
+        'a11yMonitoredKeys': a11yKeys.toList(),
+        'notifMonitoredKeys': notifKeys.toList(),
+        'a11yNotifOffKeys': a11yNotifOff.toList(),
+        'notifListenerNotifOffKeys': notifListenerNotifOff.toList(),
+        'auditLog': events.map((e) => e.toMap()).toList(),
+      };
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/service_keeper_backup_$ts.json');
+      await file.writeAsString(jsonEncode(data));
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'application/json')],
+        subject: 'Service Keeper Backup',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Backup failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _restore() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final bytes = result.files.single.bytes;
+      final path = result.files.single.path;
+      final String content;
+      if (bytes != null) {
+        content = utf8.decode(bytes);
+      } else if (path != null) {
+        content = await File(path).readAsString();
+      } else {
+        return;
+      }
+
+      final data = jsonDecode(content) as Map<String, dynamic>;
+      final version = data['version'] as int? ?? 1;
+      final services = (data['services'] as List)
+          .map((e) => MonitoredService.fromJson(e as Map<String, dynamic>))
+          .toList();
+      final a11yKeys = version >= 2
+          ? Set<String>.from(data['a11yMonitoredKeys'] as List? ?? [])
+          : <String>{};
+      final notifKeys = version >= 2
+          ? Set<String>.from(data['notifMonitoredKeys'] as List? ?? [])
+          : <String>{};
+      final a11yNotifOff = version >= 2
+          ? Set<String>.from(data['a11yNotifOffKeys'] as List? ?? [])
+          : <String>{};
+      final notifListenerNotifOff = version >= 2
+          ? Set<String>.from(data['notifListenerNotifOffKeys'] as List? ?? [])
+          : <String>{};
+      final rawLog = data['auditLog'] as List? ?? [];
+      final auditLog =
+          rawLog.map((e) => AuditEvent.fromMap(e as Map<String, dynamic>)).toList();
+
+      if (!mounted) return;
+      final currentServices = await _storage.loadServices();
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Restore Backup'),
+          content: Text(
+            'This will replace:\n'
+            '• ${currentServices.length} service${currentServices.length == 1 ? '' : 's'} → ${services.length} from backup\n'
+            '• Accessibility monitoring: ${a11yKeys.length} entries\n'
+            '• Notification monitoring: ${notifKeys.length} entries\n'
+            '• Audit log: ${auditLog.length} events',
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true), child: const Text('Restore')),
+          ],
+        ),
+      );
+      if (ok != true) return;
+
+      await _storage.saveServices(services);
+      await _storage.saveA11yMonitoredKeys(a11yKeys);
+      await _storage.saveNotifMonitoredKeys(notifKeys);
+      await _storage.saveA11yNotifOffKeys(a11yNotifOff);
+      await _storage.saveNotifListenerNotifOffKeys(notifListenerNotifOff);
+      await _db.importAuditEvents(auditLog);
+
+      _refreshCallbacks[0]?.call();
+      _refreshCallbacks[1]?.call();
+      _refreshCallbacks[2]?.call();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Restored ${services.length} services and ${auditLog.length} history events',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Restore failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  void _onNavTap(int i) {
+    setState(() => _currentIndex = i);
+    _pageController.animateToPage(
+      i,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Service Keeper'),
+        actions: [
+          if (_currentIndex == 0 && _shizukuStatus == ShizukuStatus.ready) ...[
+            IconButton(
+              icon: const Icon(Icons.play_circle_outline),
+              tooltip: 'Run monitor now',
+              onPressed: () => _runMonitorNow?.call(),
+            ),
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Check statuses now',
+              onPressed: () => _checkStatuses?.call(),
+            ),
+          ] else if (_currentIndex != 0)
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Refresh',
+              onPressed: () => _refreshCallbacks[_currentIndex]?.call(),
+            ),
+          PopupMenuButton<String>(
+            onSelected: (v) {
+              if (v == 'settings') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                ).then((_) {
+                  setState(() {});
+                  _refreshCallbacks[0]?.call();
+                });
+              }
+              if (v == 'backup') _backup();
+              if (v == 'restore') _restore();
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'settings', child: Text('Settings')),
+              PopupMenuItem(value: 'backup', child: Text('Backup')),
+              PopupMenuItem(value: 'restore', child: Text('Restore')),
+            ],
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          _buildShizukuBanner(),
+          _buildBatteryBanner(),
+          _buildNotificationPermissionBanner(),
+          Expanded(
+            child: PageView(
+              controller: _pageController,
+              onPageChanged: (i) => setState(() => _currentIndex = i),
+              children: [
+                _KeepAlive(
+                  child: HomeScreen(
+                    shizukuStatus: _shizukuStatus,
+                    onRequestShizukuPermission: _requestShizukuPermission,
+                    onRegister: ({
+                      required VoidCallback refresh,
+                      required VoidCallback runMonitorNow,
+                      required VoidCallback checkStatuses,
+                      required VoidCallback addService,
+                    }) {
+                      _refreshCallbacks[0] = refresh;
+                      _runMonitorNow = runMonitorNow;
+                      _checkStatuses = checkStatuses;
+                      _addService = addService;
+                    },
+                  ),
+                ),
+                _KeepAlive(
+                  child: AccessibilityMonitorScreen(
+                    onRegisterRefresh: (cb) => _refreshCallbacks[1] = cb,
+                  ),
+                ),
+                _KeepAlive(
+                  child: NotificationMonitorScreen(
+                    onRegisterRefresh: (cb) => _refreshCallbacks[2] = cb,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: _currentIndex == 0
+          ? FloatingActionButton.extended(
+              onPressed: _shizukuStatus == ShizukuStatus.ready
+                  ? () => _addService?.call()
+                  : _showShizukuWarning,
+              icon: const Icon(Icons.add),
+              label: const Text('Add Service'),
+            )
+          : null,
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _currentIndex,
+        onDestinationSelected: _onNavTap,
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.apps_outlined),
+            selectedIcon: Icon(Icons.apps),
+            label: 'Services',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.accessibility_outlined),
+            selectedIcon: Icon(Icons.accessibility),
+            label: 'Accessibility',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.notifications_outlined),
+            selectedIcon: Icon(Icons.notifications),
+            label: 'Notifications',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _KeepAlive extends StatefulWidget {
+  final Widget child;
+  const _KeepAlive({required this.child});
+
+  @override
+  State<_KeepAlive> createState() => _KeepAliveState();
+}
+
+class _KeepAliveState extends State<_KeepAlive> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return widget.child;
+  }
+}
