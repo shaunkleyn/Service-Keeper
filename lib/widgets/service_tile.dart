@@ -15,6 +15,9 @@ class ServiceTile extends StatefulWidget {
   final VoidCallback? onToggleNotifications;
   final Color? accentColor;
   final bool showLeading;
+  final bool globalIntervalEnabled;
+  final int effectiveIntervalMinutes;
+  final bool isRestarting;
 
   const ServiceTile({
     super.key,
@@ -29,6 +32,9 @@ class ServiceTile extends StatefulWidget {
     this.onToggleNotifications,
     this.accentColor,
     this.showLeading = true,
+    this.globalIntervalEnabled = true,
+    this.effectiveIntervalMinutes = 15,
+    this.isRestarting = false,
   });
 
   @override
@@ -50,7 +56,8 @@ class _ServiceTileState extends State<ServiceTile> with WidgetsBindingObserver {
   void didUpdateWidget(ServiceTile old) {
     super.didUpdateWidget(old);
     if (old.service.lastChecked != widget.service.lastChecked ||
-        old.service.intervalMinutes != widget.service.intervalMinutes ||
+        old.effectiveIntervalMinutes != widget.effectiveIntervalMinutes ||
+        old.globalIntervalEnabled != widget.globalIntervalEnabled ||
         old.service.enabled != widget.service.enabled) {
       _checkTriggered = false;
       _startTimer();
@@ -60,7 +67,9 @@ class _ServiceTileState extends State<ServiceTile> with WidgetsBindingObserver {
   void _startTimer() {
     _timer?.cancel();
     _timer = null;
-    if (widget.service.enabled && widget.service.lastChecked != null) {
+    if (widget.globalIntervalEnabled &&
+        widget.service.enabled &&
+        widget.service.lastChecked != null) {
       _timer = Timer.periodic(const Duration(seconds: 1), (_) {
         if (!mounted) return;
         if (_progressValue() <= 0 && !_checkTriggered) {
@@ -92,29 +101,31 @@ class _ServiceTileState extends State<ServiceTile> with WidgetsBindingObserver {
   }
 
   Color _statusColor(BuildContext context) {
+    if (widget.isRestarting) return Colors.orange;
     if (!widget.service.enabled) return Colors.grey;
     if (widget.service.wasRunning == null) return Colors.grey;
     return widget.service.wasRunning! ? Colors.green : Colors.red;
   }
 
   String _statusLabel() {
+    if (widget.isRestarting) return 'Restarting';
     if (!widget.service.enabled) return 'Disabled';
     if (widget.service.wasRunning == null) return 'Unknown';
-    return widget.service.wasRunning! ? 'Running' : 'Restarted';
+    return widget.service.wasRunning! ? 'Running' : 'Not Running';
   }
 
   String _intervalLabel() {
-    if (widget.service.intervalMinutes < 60) {
-      return 'Every ${widget.service.intervalMinutes}m';
-    }
-    return 'Every ${widget.service.intervalMinutes ~/ 60}h';
+    final minutes = widget.effectiveIntervalMinutes;
+    final suffix = widget.service.customIntervalMinutes != null ? ' (custom)' : '';
+    if (minutes < 60) return 'Every ${minutes}m$suffix';
+    return 'Every ${minutes ~/ 60}h$suffix';
   }
 
   double _progressValue() {
     if (!widget.service.enabled) return 0;
     if (widget.service.lastChecked == null) return 1;
     final elapsed = DateTime.now().difference(widget.service.lastChecked!);
-    final interval = Duration(minutes: widget.service.intervalMinutes);
+    final interval = Duration(minutes: widget.effectiveIntervalMinutes);
     final remaining = interval - elapsed;
     if (remaining.inSeconds <= 0) return 0;
     return remaining.inSeconds / interval.inSeconds;
@@ -124,7 +135,7 @@ class _ServiceTileState extends State<ServiceTile> with WidgetsBindingObserver {
     if (!widget.service.enabled) return '';
     if (widget.service.lastChecked == null) return 'Pending first check';
     final elapsed = DateTime.now().difference(widget.service.lastChecked!);
-    final remaining = Duration(minutes: widget.service.intervalMinutes) - elapsed;
+    final remaining = Duration(minutes: widget.effectiveIntervalMinutes) - elapsed;
     if (remaining.inSeconds <= 0) return 'Check pending';
     final m = remaining.inMinutes;
     final s = remaining.inSeconds % 60;
@@ -138,7 +149,7 @@ class _ServiceTileState extends State<ServiceTile> with WidgetsBindingObserver {
     final theme = Theme.of(context);
     final statusColor = _statusColor(context);
     final progress = _progressValue();
-    final nextLabel = _nextCheckLabel();
+    final nextLabel = widget.globalIntervalEnabled ? _nextCheckLabel() : '';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -202,16 +213,20 @@ class _ServiceTileState extends State<ServiceTile> with WidgetsBindingObserver {
                     ),
                     const SizedBox(height: 4),
                     Row(children: [
-                      Icon(Icons.schedule, size: 12, color: theme.colorScheme.primary),
-                      const SizedBox(width: 4),
-                      Text(
-                        _intervalLabel(),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.primary,
-                          fontWeight: FontWeight.w500,
+                      if (widget.globalIntervalEnabled) ...[
+                        Icon(Icons.schedule, size: 12, color: theme.colorScheme.primary),
+                        const SizedBox(width: 4),
+                        Text(
+                          _intervalLabel(),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: widget.service.customIntervalMinutes != null
+                                ? theme.colorScheme.tertiary
+                                : theme.colorScheme.primary,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
+                        const SizedBox(width: 12),
+                      ],
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
@@ -237,6 +252,14 @@ class _ServiceTileState extends State<ServiceTile> with WidgetsBindingObserver {
                             ? (widget.accentColor ?? theme.colorScheme.primary)
                             : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.45),
                       ),
+                      if (widget.service.appRestartEnabled) ...[
+                        const SizedBox(width: 5),
+                        Icon(
+                          Icons.open_in_new,
+                          size: 12,
+                          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                        ),
+                      ],
                     ]),
                     if (widget.service.lastChecked != null) ...[
                       const SizedBox(height: 2),
@@ -261,6 +284,29 @@ class _ServiceTileState extends State<ServiceTile> with WidgetsBindingObserver {
                           color: theme.colorScheme.onSurfaceVariant,
                           fontStyle: FontStyle.italic,
                         ),
+                      ),
+                    ],
+                    if (widget.service.enabled &&
+                        widget.service.wasRunning == false &&
+                        !widget.service.appRestartEnabled) ...[
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Icon(Icons.info_outline,
+                              size: 11,
+                              color: theme.colorScheme.error.withValues(alpha: 0.8)),
+                          const SizedBox(width: 3),
+                          Flexible(
+                            child: Text(
+                              'Enable "Restart whole app" in Configure to recover this service.',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontSize: 10,
+                                color: theme.colorScheme.error.withValues(alpha: 0.8),
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ],
@@ -337,7 +383,7 @@ class _ServiceTileState extends State<ServiceTile> with WidgetsBindingObserver {
             ],
           ),
         ),
-        if (widget.service.enabled)
+        if (widget.globalIntervalEnabled && widget.service.enabled)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: Column(

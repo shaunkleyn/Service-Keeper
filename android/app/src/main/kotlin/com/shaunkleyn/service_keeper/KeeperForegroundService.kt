@@ -59,6 +59,9 @@ class KeeperForegroundService : Service() {
     private var a11yObserver: ContentObserver? = null
     private var notifObserver: ContentObserver? = null
 
+    // Tracks packages currently being app-restarted to avoid duplicate launches
+    private val appRestartingPackages: MutableSet<String> = Collections.synchronizedSet(mutableSetOf())
+
     // Debounced grouped notification for logcat-triggered service restarts
     private val pendingServiceNotifs: MutableList<String> = Collections.synchronizedList(mutableListOf())
     private val notifDebounceHandler = Handler(Looper.getMainLooper())
@@ -153,11 +156,18 @@ class KeeperForegroundService : Service() {
 
                 var updated = current
                 val a11yNotifApps = mutableListOf<String>()
+                val uninstalledKeys = mutableListOf<String>()
                 for (i in 0 until arr.length()) {
                     val key = arr.getString(i)
                     val slash = key.indexOf('/'); if (slash < 0) continue
                     val pkg = key.substring(0, slash)
                     val cls = key.substring(slash + 1)
+
+                    if (!isPackageInstalled(pkg)) {
+                        uninstalledKeys.add(key)
+                        continue
+                    }
+
                     if (enabledSet.contains("$pkg/$cls")) continue
 
                     val label = cls.substringAfterLast('.')
@@ -172,6 +182,15 @@ class KeeperForegroundService : Service() {
 
                 if (updated != current) {
                     ShizukuExecutor.exec("settings put secure enabled_accessibility_services $updated")
+                }
+
+                if (uninstalledKeys.isNotEmpty()) {
+                    val newArr = org.json.JSONArray()
+                    for (i in 0 until arr.length()) {
+                        val k = arr.getString(i)
+                        if (!uninstalledKeys.contains(k)) newArr.put(k)
+                    }
+                    prefs.edit().putString(A11Y_KEY, newArr.toString()).apply()
                 }
 
                 val a11yDistinct = a11yNotifApps.distinct()
@@ -189,6 +208,13 @@ class KeeperForegroundService : Service() {
             val pm = applicationContext.packageManager
             pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
         } catch (_: Exception) { pkg }
+    }
+
+    private fun isPackageInstalled(pkg: String): Boolean {
+        return try {
+            applicationContext.packageManager.getApplicationInfo(pkg, 0)
+            true
+        } catch (_: Exception) { false }
     }
 
     private fun isAccessibilityService(pkg: String, cls: String): Boolean {
@@ -251,11 +277,18 @@ class KeeperForegroundService : Service() {
 
                 var updated = current
                 val notifListenerApps = mutableListOf<String>()
+                val uninstalledKeys = mutableListOf<String>()
                 for (i in 0 until arr.length()) {
                     val key = arr.getString(i)
                     val slash = key.indexOf('/'); if (slash < 0) continue
                     val pkg = key.substring(0, slash)
                     val cls = key.substring(slash + 1)
+
+                    if (!isPackageInstalled(pkg)) {
+                        uninstalledKeys.add(key)
+                        continue
+                    }
+
                     if (enabledSet.contains("$pkg/$cls")) continue
 
                     val label = cls.substringAfterLast('.')
@@ -270,6 +303,15 @@ class KeeperForegroundService : Service() {
 
                 if (updated != current) {
                     ShizukuExecutor.exec("settings put secure enabled_notification_listeners $updated")
+                }
+
+                if (uninstalledKeys.isNotEmpty()) {
+                    val newArr = org.json.JSONArray()
+                    for (i in 0 until arr.length()) {
+                        val k = arr.getString(i)
+                        if (!uninstalledKeys.contains(k)) newArr.put(k)
+                    }
+                    prefs.edit().putString(NOTIF_LISTENER_KEY, newArr.toString()).apply()
                 }
 
                 val nlDistinct = notifListenerApps.distinct()
@@ -387,7 +429,8 @@ class KeeperForegroundService : Service() {
                 if (obj.getString("packageName") != pkg || obj.getString("serviceClass") != cls) continue
                 val label = obj.optString("displayLabel", pkg)
                 val notifEnabled = obj.optBoolean("notificationsEnabled", true)
-                Thread { handleServiceStopped(pkg, cls, label, notifEnabled) }.start()
+                val appRestartEnabled = obj.optBoolean("appRestartEnabled", false)
+                Thread { handleServiceStopped(pkg, cls, label, notifEnabled, appRestartEnabled) }.start()
                 break
             }
         } catch (_: Exception) {}
@@ -405,12 +448,13 @@ class KeeperForegroundService : Service() {
                 val cls = obj.getString("serviceClass")
                 val label = obj.optString("displayLabel", pkg)
                 val notifEnabled = obj.optBoolean("notificationsEnabled", true)
-                Thread { handleServiceStopped(pkg, cls, label, notifEnabled) }.start()
+                val appRestartEnabled = obj.optBoolean("appRestartEnabled", false)
+                Thread { handleServiceStopped(pkg, cls, label, notifEnabled, appRestartEnabled) }.start()
             }
         } catch (_: Exception) {}
     }
 
-    private fun handleServiceStopped(pkg: String, cls: String, label: String, notifEnabled: Boolean) {
+    private fun handleServiceStopped(pkg: String, cls: String, label: String, notifEnabled: Boolean, appRestartEnabled: Boolean) {
         try {
             Thread.sleep(500)
             // Skip if service already recovered on its own
@@ -427,10 +471,40 @@ class KeeperForegroundService : Service() {
                     notifDebounceHandler.removeCallbacks(flushServiceNotifs)
                     notifDebounceHandler.postDelayed(flushServiceNotifs, 1500)
                 }
+            } else if (appRestartEnabled) {
+                val appStarted = restartApp(pkg)
+                if (appStarted) {
+                    appendAuditEvent(pkg, cls, label, "RESTART_SUCCESS", "AUTOMATIC", "app restarted")
+                    if (notifEnabled) {
+                        pendingServiceNotifs.add(getAppName(pkg))
+                        notifDebounceHandler.removeCallbacks(flushServiceNotifs)
+                        notifDebounceHandler.postDelayed(flushServiceNotifs, 1500)
+                    }
+                } else {
+                    appendAuditEvent(pkg, cls, label, "RESTART_FAILED", "AUTOMATIC", "service start failed; app restart also failed")
+                }
             } else {
                 appendAuditEvent(pkg, cls, label, "RESTART_FAILED", "AUTOMATIC", result.detail)
             }
         } catch (_: Exception) {}
+    }
+
+    private fun restartApp(pkg: String): Boolean {
+        if (!appRestartingPackages.add(pkg)) return false // already restarting this package
+        return try {
+            val launchIntent = applicationContext.packageManager.getLaunchIntentForPackage(pkg)
+                ?: return false
+            val component = launchIntent.component ?: return false
+            val started = ShizukuExecutor.exec(
+                "am start -n ${component.packageName}/${component.className}"
+            )
+            if (started == null || started.contains("Error", ignoreCase = true)) return false
+            Thread.sleep(1200)
+            ShizukuExecutor.exec("input keyevent 3") // HOME — minimise immediately
+            true
+        } finally {
+            appRestartingPackages.remove(pkg)
+        }
     }
 
     private fun appendAuditEvent(pkg: String, cls: String, lbl: String, evt: String, trg: String, notes: String?) {

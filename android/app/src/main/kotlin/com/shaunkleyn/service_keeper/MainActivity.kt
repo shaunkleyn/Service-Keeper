@@ -234,6 +234,31 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     }
                 }
+                "postShizukuOfflineNotification" -> {
+                    val nm = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
+                    val channelId = "service_keeper_restarts"
+                    val ch = android.app.NotificationChannel(
+                        channelId, "Service Restarts", android.app.NotificationManager.IMPORTANCE_DEFAULT
+                    )
+                    nm.createNotificationChannel(ch)
+                    val tapIntent = android.app.PendingIntent.getActivity(
+                        this, 9999,
+                        Intent(this, MainActivity::class.java).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                        },
+                        android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
+                    )
+                    val notif = androidx.core.app.NotificationCompat.Builder(this, channelId)
+                        .setSmallIcon(android.R.drawable.ic_menu_manage)
+                        .setContentTitle("Shizuku Offline")
+                        .setContentText("Shizuku stopped running. Service monitoring has paused.")
+                        .setPriority(androidx.core.app.NotificationCompat.PRIORITY_DEFAULT)
+                        .setContentIntent(tapIntent)
+                        .setAutoCancel(true)
+                        .build()
+                    nm.notify(9000, notif)
+                    result.success(null)
+                }
                 else -> result.notImplemented()
             }
         }

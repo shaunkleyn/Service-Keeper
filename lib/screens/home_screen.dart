@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -51,8 +52,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Map<String, String> _appNameCache = {};
   Map<String, Color> _appColorCache = {};
   bool _useAppColors = false;
+  bool _globalIntervalEnabled = true;
+  int _defaultIntervalMinutes = 15;
   bool _loading = true;
   final _expandedGroups = <String, bool>{};
+  final _restartingServices = <String>{};
 
   @override
   void initState() {
@@ -90,20 +94,48 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _init() async {
     await _db.importPendingEvents();
-    await _loadColorPreference();
+    await _loadSettings();
     await _loadServices();
     await _system.rescheduleAllMonitorWork();
     setState(() => _loading = false);
   }
 
   Future<void> _reload() async {
-    await _loadColorPreference();
+    final oldDefault = _defaultIntervalMinutes;
+    await _loadSettings();
     await _loadServices();
+    if (_defaultIntervalMinutes != oldDefault) {
+      await _rescheduleGlobalIntervalServices();
+    }
+  }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _useAppColors = prefs.getBool('use_app_colors') ?? false;
+        _globalIntervalEnabled = prefs.getBool('global_interval_enabled') ?? true;
+        _defaultIntervalMinutes = prefs.getInt('default_check_interval') ?? 15;
+      });
+    }
   }
 
   Future<void> _loadColorPreference() async {
     final prefs = await SharedPreferences.getInstance();
     if (mounted) setState(() => _useAppColors = prefs.getBool('use_app_colors') ?? false);
+  }
+
+  int _effectiveInterval(MonitoredService service) =>
+      service.customIntervalMinutes ?? _defaultIntervalMinutes;
+
+  Future<void> _rescheduleGlobalIntervalServices() async {
+    for (final s in _services) {
+      if (s.customIntervalMinutes == null) {
+        final updated = s.copyWith(intervalMinutes: _defaultIntervalMinutes);
+        await _storage.updateService(updated);
+        if (s.enabled && _globalIntervalEnabled) await _scheduleWork(updated);
+      }
+    }
   }
 
   Future<void> _log(MonitoredService s, AuditEventType type, AuditTrigger trigger,
@@ -123,6 +155,31 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (mounted) setState(() => _services = list);
     _fetchIconsAndNames(list);
     _system.startKeeperService(list.length);
+    _cleanupUninstalledServices(list);
+  }
+
+  Future<void> _cleanupUninstalledServices(List<MonitoredService> services) async {
+    final packages = services.map((s) => s.packageName).toSet();
+    final uninstalledPkgs = <String>{};
+    for (final pkg in packages) {
+      final name = await _appInfo.getAppName(pkg);
+      if (name == null) uninstalledPkgs.add(pkg);
+    }
+    if (uninstalledPkgs.isEmpty) return;
+    for (final s in services.where((s) => uninstalledPkgs.contains(s.packageName))) {
+      await _storage.removeService(s);
+      Workmanager().cancelByTag(s.workTag);
+      await _system.cancelMonitorWork(s.workTag);
+    }
+    final updated = await _storage.loadServices();
+    if (mounted) {
+      setState(() => _services = updated);
+      final names = uninstalledPkgs.map((p) => p.split('.').last).join(', ');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Removed monitoring for uninstalled app(s): $names'),
+        duration: const Duration(seconds: 4),
+      ));
+    }
   }
 
   Future<void> _fetchIconsAndNames(List<MonitoredService> services) async {
@@ -235,27 +292,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _scheduleWork(MonitoredService service) async {
-    if (!service.enabled) {
+    if (!service.enabled || !_globalIntervalEnabled) {
       Workmanager().cancelByTag(service.workTag);
       await _system.cancelMonitorWork(service.workTag);
       return;
     }
 
+    final minutes = service.intervalMinutes;
+
     await _system.scheduleMonitorWork(
       packageName: service.packageName,
       serviceClass: service.serviceClass,
       displayLabel: service.displayLabel,
-      intervalMinutes: service.intervalMinutes,
+      intervalMinutes: minutes,
     );
 
     Workmanager().cancelByTag(service.workTag);
 
-    if (service.intervalMinutes >= 15) {
+    if (minutes >= 15) {
       await Workmanager().registerPeriodicTask(
         service.workTag,
         'serviceCheck',
         tag: service.workTag,
-        frequency: Duration(minutes: service.intervalMinutes),
+        frequency: Duration(minutes: minutes),
         inputData: {
           'packageName': service.packageName,
           'serviceClass': service.serviceClass,
@@ -269,12 +328,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         '${service.workTag}_once',
         'serviceCheck',
         tag: service.workTag,
-        initialDelay: Duration(minutes: service.intervalMinutes),
+        initialDelay: Duration(minutes: minutes),
         inputData: {
           'packageName': service.packageName,
           'serviceClass': service.serviceClass,
           'displayLabel': service.displayLabel,
-          'intervalMinutes': service.intervalMinutes,
+          'intervalMinutes': minutes,
           'selfChain': true,
         },
       );
@@ -284,13 +343,79 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _onServicePicked(MonitoredService result) async {
-    final prefs = await SharedPreferences.getInstance();
-    final defaultInterval = prefs.getInt('default_check_interval') ?? 15;
-    final service = result.copyWith(intervalMinutes: defaultInterval);
+    // New services use global interval by default (customIntervalMinutes = null)
+    final service = result.copyWith(
+      customIntervalMinutes: null,
+      intervalMinutes: _defaultIntervalMinutes,
+    );
     await _storage.addService(service);
     await _log(service, AuditEventType.added, AuditTrigger.manual);
     await _loadServices();
     await _scheduleWork(service);
+  }
+
+  // Returns: null = cancelled, -1 = use global, positive int = specific minutes
+  Future<int?> _showIntervalDialog(BuildContext ctx, int? currentCustomMinutes) {
+    const presets = [
+      (label: '5 minutes', minutes: 5),
+      (label: '10 minutes', minutes: 10),
+      (label: '15 minutes', minutes: 15),
+      (label: '30 minutes', minutes: 30),
+      (label: '1 hour', minutes: 60),
+      (label: '2 hours', minutes: 120),
+      (label: '4 hours', minutes: 240),
+    ];
+    // 0 = global sentinel in the radio group
+    int radioValue = currentCustomMinutes ?? 0;
+    return showDialog<int>(
+      context: ctx,
+      builder: (dCtx) => StatefulBuilder(
+        builder: (dCtx, setSt) => AlertDialog(
+          title: const Text('Check interval'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                RadioListTile<int>(
+                  dense: true,
+                  title: Text('Global value ($_defaultIntervalMinutes min)'),
+                  value: 0,
+                  groupValue: radioValue,
+                  onChanged: (_) => setSt(() => radioValue = 0),
+                ),
+                ...presets.map((p) => RadioListTile<int>(
+                      dense: true,
+                      title: Text(p.label),
+                      value: p.minutes,
+                      groupValue: radioValue,
+                      onChanged: (v) => setSt(() => radioValue = v!),
+                    )),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(dCtx), child: const Text('Cancel')),
+            FilledButton(
+                onPressed: () => Navigator.pop(dCtx, radioValue == 0 ? -1 : radioValue),
+                child: const Text('Apply')),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _setAppInterval(List<MonitoredService> services, int? customMinutes) async {
+    final effectiveMinutes = customMinutes ?? _defaultIntervalMinutes;
+    for (final s in services) {
+      final updated = s.copyWith(
+        customIntervalMinutes: customMinutes,
+        intervalMinutes: effectiveMinutes,
+      );
+      await _storage.updateService(updated);
+      if (s.enabled && _globalIntervalEnabled) await _scheduleWork(updated);
+    }
+    await _loadServices();
   }
 
   Future<void> _addServiceForApp(String packageName) async {
@@ -323,7 +448,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _configureService(MonitoredService service) async {
     final updated = await Navigator.push<MonitoredService>(
       context,
-      MaterialPageRoute(builder: (_) => ServiceDetailScreen(service: service)),
+      MaterialPageRoute(
+        builder: (_) => ServiceDetailScreen(
+          service: service,
+          globalIntervalEnabled: _globalIntervalEnabled,
+          globalIntervalMinutes: _defaultIntervalMinutes,
+        ),
+      ),
     );
     if (updated == null) return;
     await _storage.updateService(updated);
@@ -371,25 +502,51 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _showShizukuWarning();
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Restarting ${service.displayLabel}...')),
-    );
+    final key = '${service.packageName}/${service.serviceClass}';
+    setState(() => _restartingServices.add(key));
+
     await _log(service, AuditEventType.restartAttempted, AuditTrigger.manual);
     final (ok, detail) = await _manager.startService(service);
-    await _log(service, ok ? AuditEventType.restartSuccess : AuditEventType.restartFailed,
-        AuditTrigger.manual, notes: detail);
-    final updated = service.copyWith(
-      lastRestarted: ok ? DateTime.now() : service.lastRestarted,
-      wasRunning: ok ? true : service.wasRunning,
-    );
+
+    bool? nowRunning;
+    MonitoredService updated;
+    if (ok) {
+      final viaAppLaunch = detail == 'restart method: app launch';
+      if (viaAppLaunch) {
+        // JobIntentService runs via job scheduler — won't appear in dumpsys immediately.
+        // Treat app launch success as service restart success.
+        nowRunning = true;
+      } else {
+        await Future.delayed(const Duration(seconds: 3));
+        nowRunning = await _manager.isServiceRunning(service);
+      }
+      updated = service.copyWith(
+        lastRestarted: DateTime.now(),
+        wasRunning: nowRunning ?? true,
+        lastChecked: nowRunning != null ? DateTime.now() : service.lastChecked,
+      );
+      await _log(
+          service,
+          nowRunning == true ? AuditEventType.restartSuccess : AuditEventType.restartFailed,
+          AuditTrigger.manual,
+          notes: detail);
+    } else {
+      nowRunning = false;
+      updated = service.copyWith(wasRunning: false);
+      await _log(service, AuditEventType.restartFailed, AuditTrigger.manual, notes: detail);
+    }
+
     await _storage.updateService(updated);
+    setState(() => _restartingServices.remove(key));
     await _loadServices();
+
     if (mounted) {
+      final success = ok && nowRunning == true;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(ok
-            ? '${service.displayLabel} restart sent.'
+        content: Text(success
+            ? '${service.displayLabel} restarted successfully.'
             : 'Failed to restart ${service.displayLabel}.'),
-        backgroundColor: ok ? Colors.green : Colors.red,
+        backgroundColor: success ? Colors.green : Colors.red,
       ));
     }
   }
@@ -428,11 +585,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         lastChecked: _retryTime(service),
       ));
       await _loadServices();
+      if (mounted) {
+        final hint = service.appRestartEnabled
+            ? null
+            : ' Try enabling "Restart whole app" in Configure.';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+            'Could not restart ${service.displayLabel}.${hint ?? ''}',
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 6),
+        ));
+      }
       return;
     }
 
-    await Future.delayed(const Duration(seconds: 3));
-    final nowRunning = await _manager.isServiceRunning(service);
+    final viaAppLaunch = detail == 'restart method: app launch';
+    bool? nowRunning;
+    if (viaAppLaunch) {
+      nowRunning = true; // JobIntentService won't appear in dumpsys; treat launch as success
+    } else {
+      await Future.delayed(const Duration(seconds: 3));
+      nowRunning = await _manager.isServiceRunning(service);
+    }
 
     if (nowRunning == true) {
       await _log(service, AuditEventType.restartSuccess, AuditTrigger.automatic,
@@ -450,6 +625,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         lastChecked: _retryTime(service),
         lastRestarted: DateTime.now(),
       ));
+      if (mounted) {
+        final hint = service.appRestartEnabled
+            ? null
+            : ' Try enabling "Restart whole app" in Configure.';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+            'Could not restart ${service.displayLabel}.${hint ?? ''}',
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 6),
+        ));
+      }
     }
     await _loadServices();
   }
@@ -461,25 +648,67 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     final enabled = services.where((s) => s.enabled).toList();
     if (enabled.isEmpty) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-          content: Text(
-              'Restarting ${enabled.length} service${enabled.length == 1 ? '' : 's'}...')),
-    );
+
+    setState(() {
+      for (final s in enabled) {
+        _restartingServices.add('${s.packageName}/${s.serviceClass}');
+      }
+    });
+
+    int successCount = 0;
+    int failCount = 0;
+
     for (final s in enabled) {
       await _log(s, AuditEventType.restartAttempted, AuditTrigger.manual);
       final (ok, detail) = await _manager.startService(s);
-      await _log(s, ok ? AuditEventType.restartSuccess : AuditEventType.restartFailed,
-          AuditTrigger.manual, notes: detail);
+
       if (ok) {
-        await _storage.updateService(
-            s.copyWith(lastRestarted: DateTime.now(), wasRunning: true));
+        bool? nowRunning;
+        if (detail == 'restart method: app launch') {
+          nowRunning = true; // JobIntentService; treat launch as success
+        } else {
+          await Future.delayed(const Duration(seconds: 2));
+          nowRunning = await _manager.isServiceRunning(s);
+        }
+        if (nowRunning == true) {
+          successCount++;
+          await _log(s, AuditEventType.restartSuccess, AuditTrigger.manual, notes: detail);
+          await _storage.updateService(s.copyWith(
+            lastRestarted: DateTime.now(),
+            wasRunning: true,
+            lastChecked: DateTime.now(),
+          ));
+        } else {
+          failCount++;
+          await _log(s, AuditEventType.restartFailed, AuditTrigger.manual, notes: detail);
+          await _storage.updateService(s.copyWith(wasRunning: nowRunning));
+        }
+      } else {
+        failCount++;
+        await _log(s, AuditEventType.restartFailed, AuditTrigger.manual, notes: detail);
+        await _storage.updateService(s.copyWith(wasRunning: false));
       }
+
+      setState(() => _restartingServices.remove('${s.packageName}/${s.serviceClass}'));
     }
+
     await _loadServices();
     if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Restart commands sent')));
+      final String msg;
+      final Color? color;
+      if (failCount == 0) {
+        msg = 'All $successCount service${successCount == 1 ? '' : 's'} restarted successfully.';
+        color = Colors.green;
+      } else if (successCount == 0) {
+        msg = 'Failed to restart $failCount service${failCount == 1 ? '' : 's'}.';
+        color = Colors.red;
+      } else {
+        msg = '$successCount restarted, $failCount failed.';
+        color = Colors.orange;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg), backgroundColor: color),
+      );
     }
   }
 
@@ -593,6 +822,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     services: services,
                     expanded: _expandedGroups[pkg] ?? false,
                     appColor: _useAppColors ? _appColorCache[pkg] : null,
+                    globalIntervalEnabled: _globalIntervalEnabled,
+                    globalIntervalMinutes: _defaultIntervalMinutes,
                     onTap: () => setState(() {
                       _expandedGroups[pkg] = !(_expandedGroups[pkg] ?? false);
                     }),
@@ -602,6 +833,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         _toggleAppNotifications(services, appName),
                     notificationsEnabled: services.every((s) => s.notificationsEnabled),
                     onAddServices: () => _addServiceForApp(pkg),
+                    onSetInterval: _globalIntervalEnabled
+                        ? () async {
+                            final current = services.first.customIntervalMinutes;
+                            final result =
+                                await _showIntervalDialog(context, current);
+                            if (result == null) return;
+                            await _setAppInterval(services, result == -1 ? null : result);
+                          }
+                        : null,
                   ),
                 ),
                 if (_expandedGroups[pkg] == true)
@@ -637,6 +877,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                     service: s,
                                     showLeading: false,
                                     accentColor: appColor,
+                                    globalIntervalEnabled: _globalIntervalEnabled,
+                                    effectiveIntervalMinutes: _effectiveInterval(s),
+                                    isRestarting: _restartingServices.contains(
+                                        '${s.packageName}/${s.serviceClass}'),
                                     onToggle: () => _toggleService(s),
                                     onConfigure: () => _configureService(s),
                                     onRemove: () => _removeService(s),
@@ -709,12 +953,15 @@ class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
   final List<MonitoredService> services;
   final bool expanded;
   final Color? appColor;
+  final bool globalIntervalEnabled;
+  final int globalIntervalMinutes;
   final VoidCallback onTap;
   final VoidCallback onRestartAll;
   final VoidCallback onViewHistory;
   final VoidCallback onToggleNotifications;
   final bool notificationsEnabled;
   final VoidCallback onAddServices;
+  final VoidCallback? onSetInterval;
 
   const _GroupHeaderDelegate({
     required this.packageName,
@@ -723,12 +970,15 @@ class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.services,
     required this.expanded,
     this.appColor,
+    this.globalIntervalEnabled = true,
+    this.globalIntervalMinutes = 15,
     required this.onTap,
     required this.onRestartAll,
     required this.onViewHistory,
     required this.onToggleNotifications,
     required this.notificationsEnabled,
     required this.onAddServices,
+    this.onSetInterval,
   });
 
   @override
@@ -758,23 +1008,15 @@ class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
       bottomRight: expanded ? Radius.zero : const Radius.circular(12),
     );
 
-    final Widget icon;
-    if (iconBytes != null) {
-      icon = CircleAvatar(
-        radius: 20,
-        backgroundImage: MemoryImage(iconBytes!),
-        backgroundColor: Colors.transparent,
-      );
-    } else {
-      icon = CircleAvatar(
-        radius: 20,
-        backgroundColor: appColor ?? theme.colorScheme.primaryContainer,
-        child: Text(
-          packageName.isNotEmpty ? packageName.split('.').last[0].toUpperCase() : '?',
-          style: TextStyle(color: headerFg ?? theme.colorScheme.onPrimaryContainer),
-        ),
-      );
-    }
+    final Widget icon = _AppIconWithRings(
+      iconBytes: iconBytes,
+      packageName: packageName,
+      appColor: appColor,
+      headerFg: headerFg,
+      services: services,
+      globalIntervalMinutes: globalIntervalMinutes,
+      globalIntervalEnabled: globalIntervalEnabled,
+    );
 
     return ColoredBox(
       color: theme.colorScheme.surface,
@@ -851,11 +1093,17 @@ class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
                         if (v == 'restart_all') onRestartAll();
                         if (v == 'view_history') onViewHistory();
                         if (v == 'toggle_notifications') onToggleNotifications();
+                        if (v == 'set_interval') onSetInterval?.call();
                       },
                       itemBuilder: (_) => [
                         const PopupMenuItem(value: 'add_services', child: Text('Add services')),
                         const PopupMenuItem(value: 'restart_all', child: Text('Restart all')),
                         const PopupMenuItem(value: 'view_history', child: Text('View history')),
+                        if (globalIntervalEnabled && onSetInterval != null)
+                          const PopupMenuItem(
+                            value: 'set_interval',
+                            child: Text('Set Check Interval'),
+                          ),
                         PopupMenuItem(
                           value: 'toggle_notifications',
                           child: Row(
@@ -896,5 +1144,167 @@ class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
       old.iconBytes != iconBytes ||
       old.services != services ||
       old.notificationsEnabled != notificationsEnabled ||
-      old.onAddServices != onAddServices;
+      old.globalIntervalEnabled != globalIntervalEnabled ||
+      old.globalIntervalMinutes != globalIntervalMinutes ||
+      old.onAddServices != onAddServices ||
+      old.onSetInterval != onSetInterval;
+}
+
+class _AppIconWithRings extends StatefulWidget {
+  final Uint8List? iconBytes;
+  final String packageName;
+  final Color? appColor;
+  final Color? headerFg;
+  final List<MonitoredService> services;
+  final int globalIntervalMinutes;
+  final bool globalIntervalEnabled;
+
+  const _AppIconWithRings({
+    required this.packageName,
+    this.iconBytes,
+    this.appColor,
+    this.headerFg,
+    required this.services,
+    required this.globalIntervalMinutes,
+    required this.globalIntervalEnabled,
+  });
+
+  @override
+  State<_AppIconWithRings> createState() => _AppIconWithRingsState();
+}
+
+class _AppIconWithRingsState extends State<_AppIconWithRings>
+    with WidgetsBindingObserver {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _startTimer();
+  }
+
+  @override
+  void didUpdateWidget(_AppIconWithRings old) {
+    super.didUpdateWidget(old);
+    _startTimer();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _startTimer();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.inactive) {
+      _timer?.cancel();
+      _timer = null;
+    }
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    final hasTracked = widget.globalIntervalEnabled &&
+        widget.services.any((s) => s.enabled && s.lastChecked != null);
+    if (hasTracked) {
+      _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) setState(() {});
+      });
+    } else {
+      _timer = null;
+    }
+  }
+
+  int _effectiveInterval(MonitoredService s) =>
+      s.customIntervalMinutes ?? widget.globalIntervalMinutes;
+
+  double _progressForInterval(int intervalMinutes) {
+    final relevant = widget.services.where(
+        (s) => s.enabled && s.lastChecked != null && _effectiveInterval(s) == intervalMinutes);
+    if (relevant.isEmpty) return 1.0;
+    double minProgress = 1.0;
+    for (final s in relevant) {
+      final elapsed = DateTime.now().difference(s.lastChecked!).inSeconds;
+      final total = intervalMinutes * 60;
+      final p = total <= 0 ? 0.0 : ((total - elapsed) / total).clamp(0.0, 1.0);
+      if (p < minProgress) minProgress = p;
+    }
+    return minProgress;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isColorful = widget.appColor != null;
+
+    final Widget avatar = widget.iconBytes != null
+        ? CircleAvatar(
+            radius: 20,
+            backgroundImage: MemoryImage(widget.iconBytes!),
+            backgroundColor: Colors.transparent,
+          )
+        : CircleAvatar(
+            radius: 20,
+            backgroundColor: widget.appColor ?? theme.colorScheme.primaryContainer,
+            child: Text(
+              widget.packageName.isNotEmpty
+                  ? widget.packageName.split('.').last[0].toUpperCase()
+                  : '?',
+              style: TextStyle(
+                  color: widget.headerFg ?? theme.colorScheme.onPrimaryContainer),
+            ),
+          );
+
+    if (!widget.globalIntervalEnabled) return avatar;
+
+    final tracked = widget.services
+        .where((s) => s.enabled && s.lastChecked != null)
+        .toList();
+    final uniqueIntervals =
+        tracked.map(_effectiveInterval).toSet().toList()..sort();
+
+    if (uniqueIntervals.isEmpty) return avatar;
+
+    final opacity = 1.0 / uniqueIntervals.length;
+
+    return SizedBox(
+      width: 44,
+      height: 44,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          ...uniqueIntervals.map((interval) {
+            final progress = _progressForInterval(interval);
+            final Color ringColor;
+            if (isColorful) {
+              ringColor =
+                  (widget.headerFg ?? Colors.white).withValues(alpha: opacity);
+            } else {
+              final base =
+                  progress < 0.15 ? Colors.orange : theme.colorScheme.primary;
+              ringColor = base.withValues(alpha: opacity.clamp(0.4, 1.0));
+            }
+            return SizedBox(
+              width: 44,
+              height: 44,
+              child: CircularProgressIndicator(
+                value: progress,
+                strokeWidth: 3,
+                backgroundColor: Colors.transparent,
+                valueColor: AlwaysStoppedAnimation<Color>(ringColor),
+              ),
+            );
+          }),
+          avatar,
+        ],
+      ),
+    );
+  }
 }

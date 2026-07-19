@@ -126,4 +126,12 @@ class SystemService {
       return false;
     }
   }
+
+  Future<void> postShizukuOfflineNotification() async {
+    try {
+      await _channel.invokeMethod('postShizukuOfflineNotification');
+    } on PlatformException {
+      // ignore
+    }
+  }
 }

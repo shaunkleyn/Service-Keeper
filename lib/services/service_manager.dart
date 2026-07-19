@@ -74,7 +74,9 @@ class ServiceManager {
     );
   }
 
-  /// Start (or restart) a service. Returns (success, errorReason); errorReason is null on success.
+  /// Start (or restart) a service. Returns (success, detail).
+  /// When detail == 'restart method: app launch', the caller must NOT verify via
+  /// isServiceRunning — JobIntentService runs via job scheduler and won't appear in dumpsys.
   Future<(bool, String?)> startService(MonitoredService service) async {
     final result = await _shizuku.exec(
       'am start-foreground-service -n ${service.fullServiceName}',
@@ -87,8 +89,15 @@ class ServiceManager {
         return (true, null);
       }
 
-      // If direct start is blocked by app export/permission rules,
-      // attempt app-defined exported broadcast actions as a fallback.
+      // When appRestartEnabled: skip the broadcast loop (can take 20+ seconds for apps
+      // with many matching action strings like Life360) and go straight to app launch.
+      // Broadcasts cannot start a non-exported JobIntentService anyway.
+      if (service.appRestartEnabled) {
+        final launched = await _restartViaAppLaunch(service.packageName);
+        if (launched) return (true, 'restart method: app launch');
+      }
+
+      // Broadcast fallback: for apps that expose exported receivers that start services.
       final (broadcastOk, broadcastReason) = await _tryBroadcastStartFallback(service);
       if (broadcastOk) return (true, broadcastReason);
 
@@ -99,6 +108,27 @@ class ServiceManager {
       return (false, '$reason; broadcast fallback failed: $broadcastReason');
     }
     return (true, null);
+  }
+
+  Future<bool> _restartViaAppLaunch(String packageName) async {
+    // Resolve the exact launcher activity — `-p pkg` intent matching fails for apps
+    // with non-standard launchers (e.g. Life360 uses com.life360.koko.LauncherNormal).
+    final resolved = await _shizuku.exec(
+      'cmd package resolve-activity --brief '
+      '-a android.intent.action.MAIN '
+      '-c android.intent.category.LAUNCHER $packageName',
+    );
+    final component = resolved
+        ?.split('\n')
+        .map((l) => l.trim())
+        .lastWhere((l) => l.contains('/'), orElse: () => '');
+    if (component == null || component.isEmpty) return false;
+
+    final result = await _shizuku.exec('am start -n $component');
+    if (result == null || result.toLowerCase().contains('error')) return false;
+    await Future.delayed(const Duration(milliseconds: 1200));
+    await _shizuku.exec('input keyevent 3'); // HOME — minimize immediately
+    return true;
   }
 
   Future<(bool, String?)> _tryBroadcastStartFallback(MonitoredService service) async {

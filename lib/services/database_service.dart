@@ -22,19 +22,22 @@ class DatabaseService {
     final path = join(dir, 'service_keeper.db');
     return openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: (db, _) async {
         await db.execute('''
           CREATE TABLE services (
-            package_name  TEXT NOT NULL,
-            service_class TEXT NOT NULL,
-            display_label TEXT NOT NULL,
-            app_name      TEXT,
-            interval_minutes INTEGER NOT NULL DEFAULT 15,
-            enabled       INTEGER NOT NULL DEFAULT 1,
-            last_restarted TEXT,
-            last_checked   TEXT,
-            was_running    INTEGER,
+            package_name           TEXT NOT NULL,
+            service_class          TEXT NOT NULL,
+            display_label          TEXT NOT NULL,
+            app_name               TEXT,
+            interval_minutes       INTEGER NOT NULL DEFAULT 15,
+            custom_interval_minutes INTEGER,
+            enabled                INTEGER NOT NULL DEFAULT 1,
+            notifications_enabled  INTEGER NOT NULL DEFAULT 1,
+            app_restart_enabled    INTEGER NOT NULL DEFAULT 0,
+            last_restarted         TEXT,
+            last_checked           TEXT,
+            was_running            INTEGER,
             PRIMARY KEY (package_name, service_class)
           )
         ''');
@@ -54,6 +57,16 @@ class DatabaseService {
             'CREATE INDEX idx_audit_pkg ON audit_log (package_name, service_class)');
         await db.execute(
             'CREATE INDEX idx_audit_ts ON audit_log (timestamp DESC)');
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute(
+              'ALTER TABLE services ADD COLUMN custom_interval_minutes INTEGER');
+          await db.execute(
+              'ALTER TABLE services ADD COLUMN notifications_enabled INTEGER NOT NULL DEFAULT 1');
+          await db.execute(
+              'ALTER TABLE services ADD COLUMN app_restart_enabled INTEGER NOT NULL DEFAULT 0');
+        }
       },
     );
   }
@@ -174,7 +187,10 @@ class DatabaseService {
         'display_label': s.displayLabel,
         'app_name': s.appName,
         'interval_minutes': s.intervalMinutes,
+        'custom_interval_minutes': s.customIntervalMinutes,
         'enabled': s.enabled ? 1 : 0,
+        'notifications_enabled': s.notificationsEnabled ? 1 : 0,
+        'app_restart_enabled': s.appRestartEnabled ? 1 : 0,
         'last_restarted': s.lastRestarted?.toIso8601String(),
         'last_checked': s.lastChecked?.toIso8601String(),
         'was_running': s.wasRunning == null ? null : (s.wasRunning! ? 1 : 0),
@@ -187,7 +203,10 @@ class DatabaseService {
         displayLabel: m['display_label'] as String,
         appName: m['app_name'] as String?,
         intervalMinutes: m['interval_minutes'] as int? ?? 15,
+        customIntervalMinutes: m['custom_interval_minutes'] as int?,
         enabled: (m['enabled'] as int? ?? 1) == 1,
+        notificationsEnabled: (m['notifications_enabled'] as int? ?? 1) == 1,
+        appRestartEnabled: (m['app_restart_enabled'] as int? ?? 0) == 1,
         lastRestarted: m['last_restarted'] != null
             ? DateTime.parse(m['last_restarted'] as String)
             : null,

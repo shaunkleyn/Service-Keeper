@@ -141,6 +141,20 @@ class StorageService {
     await prefs.setString(_notifListenerNotifOffKey, jsonEncode(keys.toList()));
   }
 
+  // ── Global interval check setting ────────────────────────────────────────
+
+  static const _globalIntervalEnabledKey = 'global_interval_enabled';
+
+  Future<bool> getGlobalIntervalEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_globalIntervalEnabledKey) ?? true;
+  }
+
+  Future<void> setGlobalIntervalEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_globalIntervalEnabledKey, enabled);
+  }
+
   // ── Bulk-save for backup/restore ──────────────────────────────────────────
 
   Future<void> saveA11yMonitoredKeys(Set<String> keys) async {

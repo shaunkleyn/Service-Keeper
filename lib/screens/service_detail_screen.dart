@@ -3,15 +3,23 @@ import '../models/monitored_service.dart';
 
 class ServiceDetailScreen extends StatefulWidget {
   final MonitoredService service;
+  final bool globalIntervalEnabled;
+  final int globalIntervalMinutes;
 
-  const ServiceDetailScreen({super.key, required this.service});
+  const ServiceDetailScreen({
+    super.key,
+    required this.service,
+    this.globalIntervalEnabled = true,
+    this.globalIntervalMinutes = 15,
+  });
 
   @override
   State<ServiceDetailScreen> createState() => _ServiceDetailScreenState();
 }
 
 class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
-  late int _intervalMinutes;
+  int? _customIntervalMinutes;
+  late bool _appRestartEnabled;
 
   static const _presets = [
     (label: '5 minutes', minutes: 5),
@@ -26,8 +34,11 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _intervalMinutes = widget.service.intervalMinutes;
+    _customIntervalMinutes = widget.service.customIntervalMinutes;
+    _appRestartEnabled = widget.service.appRestartEnabled;
   }
+
+  int get _effectiveMinutes => _customIntervalMinutes ?? widget.globalIntervalMinutes;
 
   @override
   Widget build(BuildContext context) {
@@ -73,6 +84,38 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                 ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
           const SizedBox(height: 12),
+          if (!widget.globalIntervalEnabled)
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.schedule_outlined,
+                      color: theme.colorScheme.onSurfaceVariant, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Interval checking is disabled globally. Enable it in Settings to use scheduled checks.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          // Global value option
+          RadioListTile<int>(
+            title: Text('Global value (${widget.globalIntervalMinutes} min)'),
+            value: 0,
+            groupValue: _customIntervalMinutes ?? 0,
+            onChanged: widget.globalIntervalEnabled
+                ? (_) => setState(() => _customIntervalMinutes = null)
+                : null,
+          ),
           ..._presets.map((p) => RadioListTile<int>(
                 title: Text(p.label),
                 subtitle: p.minutes < 15
@@ -82,10 +125,12 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                       )
                     : null,
                 value: p.minutes,
-                groupValue: _intervalMinutes,
-                onChanged: (v) => setState(() => _intervalMinutes = v!),
+                groupValue: _customIntervalMinutes ?? 0,
+                onChanged: widget.globalIntervalEnabled
+                    ? (v) => setState(() => _customIntervalMinutes = v!)
+                    : null,
               )),
-          if (_intervalMinutes < 15)
+          if (_effectiveMinutes < 15 && widget.globalIntervalEnabled)
             Container(
               margin: const EdgeInsets.only(top: 8),
               padding: const EdgeInsets.all(12),
@@ -109,6 +154,24 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                 ],
               ),
             ),
+          const SizedBox(height: 24),
+          Text('Restart behavior',
+              style: theme.textTheme.titleSmall
+                  ?.copyWith(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Restart whole app if service can\'t be started'),
+            subtitle: Text(
+              'When the service fails to start directly (e.g. it\'s a JobIntentService), '
+              'Service Keeper will launch the app instead. '
+              'The app will be minimised immediately after.',
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+            value: _appRestartEnabled,
+            onChanged: (v) => setState(() => _appRestartEnabled = v),
+          ),
         ],
       ),
     );
@@ -134,9 +197,14 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
       );
 
   void _save() {
+    final effectiveMinutes = _customIntervalMinutes ?? widget.globalIntervalMinutes;
     Navigator.pop(
       context,
-      widget.service.copyWith(intervalMinutes: _intervalMinutes),
+      widget.service.copyWith(
+        customIntervalMinutes: _customIntervalMinutes,
+        intervalMinutes: effectiveMinutes,
+        appRestartEnabled: _appRestartEnabled,
+      ),
     );
   }
 }

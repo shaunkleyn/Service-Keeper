@@ -85,6 +85,18 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
       }
     }
 
+    final validKeys = a11y.map((s) => '${s.packageName}/${s.serviceClass}').toSet();
+    final staleKeys = monKeys.where((k) => !validKeys.contains(k)).toSet();
+    if (staleKeys.isNotEmpty) {
+      monKeys = monKeys.difference(staleKeys);
+      for (final k in staleKeys) {
+        final slash = k.indexOf('/');
+        if (slash >= 0) {
+          await _storage.removeA11yMonitored(k.substring(0, slash), k.substring(slash + 1));
+        }
+      }
+    }
+
     if (mounted) {
       setState(() {
         _a11yServices = a11y;

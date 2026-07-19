@@ -10,6 +10,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _useAppColors = false;
+  bool _globalIntervalEnabled = true;
   int _defaultInterval = 15;
 
   static const _intervalPresets = [
@@ -32,6 +33,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _useAppColors = prefs.getBool('use_app_colors') ?? false;
+      _globalIntervalEnabled = prefs.getBool('global_interval_enabled') ?? true;
       _defaultInterval = prefs.getInt('default_check_interval') ?? 15;
     });
   }
@@ -40,6 +42,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('use_app_colors', value);
     setState(() => _useAppColors = value);
+  }
+
+  Future<void> _setGlobalIntervalEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('global_interval_enabled', value);
+    setState(() => _globalIntervalEnabled = value);
   }
 
   Future<void> _setDefaultInterval(int minutes) async {
@@ -65,48 +73,112 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: _setAppColors,
           ),
           const Divider(height: 1),
-          _sectionHeader(context, 'Default check interval'),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Text(
-              'Sets the check interval pre-selected when you add a new service. '
-              'Services already added are not affected.',
+          _sectionHeader(context, 'Interval checking'),
+          SwitchListTile(
+            title: const Text('Enable interval checking'),
+            subtitle: Text(
+              _globalIntervalEnabled
+                  ? 'Services are checked on their configured schedule.'
+                  : 'Automatic scheduled checks are off. Services are only restarted when Service Keeper observes a change via logcat.',
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
+            value: _globalIntervalEnabled,
+            onChanged: _setGlobalIntervalEnabled,
           ),
-          ..._intervalPresets.map((p) => RadioListTile<int>(
-                title: Text(p.label),
-                subtitle: p.minutes < 15
-                    ? Text(
-                        'Uses alarm-based scheduling — more aggressive but may drain battery faster',
-                        style: theme.textTheme.bodySmall,
-                      )
-                    : null,
-                value: p.minutes,
-                groupValue: _defaultInterval,
-                onChanged: (v) => _setDefaultInterval(v!),
-              )),
-          if (_defaultInterval < 15)
+          if (_globalIntervalEnabled) ...[
+            if (_defaultInterval < 15)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.errorContainer,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.battery_alert,
+                          color: theme.colorScheme.onErrorContainer, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Intervals under 15 minutes use self-scheduling workers and drain battery faster.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onErrorContainer),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            const Divider(height: 1),
+            _sectionHeader(context, 'Default check interval'),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(
+                'Applied to new services. Services with a custom interval are not affected.',
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ),
+            ..._intervalPresets.map((p) => RadioListTile<int>(
+                  title: Text(p.label),
+                  subtitle: p.minutes < 15
+                      ? Text(
+                          'Alarm-based scheduling — more aggressive, higher battery use',
+                          style: theme.textTheme.bodySmall,
+                        )
+                      : null,
+                  value: p.minutes,
+                  groupValue: _defaultInterval,
+                  onChanged: (v) => _setDefaultInterval(v!),
+                )),
+            if (_defaultInterval < 15)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.tertiaryContainer,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline,
+                          color: theme.colorScheme.onTertiaryContainer, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Intervals under 15 minutes use self-scheduling one-time workers. '
+                          'Android Doze mode may still delay checks during deep sleep.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onTertiaryContainer),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ] else
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
               child: Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.tertiaryContainer,
+                  color: theme.colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.info_outline,
-                        color: theme.colorScheme.onTertiaryContainer, size: 18),
+                    Icon(Icons.schedule_outlined,
+                        color: theme.colorScheme.onSurfaceVariant, size: 18),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Intervals under 15 minutes use self-scheduling one-time workers. '
-                        'Android Doze mode may still delay checks during deep sleep.',
+                        'Default interval setting is disabled while interval checking is off.',
                         style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onTertiaryContainer),
+                            color: theme.colorScheme.onSurfaceVariant),
                       ),
                     ),
                   ],

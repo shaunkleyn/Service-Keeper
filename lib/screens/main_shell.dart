@@ -38,6 +38,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   Timer? _durationTimer;
   bool _batteryExempt = true;
   bool _notificationPermissionGranted = true;
+  bool _globalIntervalEnabled = true;
 
   final _refreshCallbacks = <int, VoidCallback>{};
   VoidCallback? _runMonitorNow;
@@ -72,11 +73,28 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     await _checkShizuku();
     await _checkBatteryOptimization();
     await _checkNotificationPermission();
+    await _loadIntervalSetting();
+  }
+
+  Future<void> _loadIntervalSetting() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() => _globalIntervalEnabled = prefs.getBool('global_interval_enabled') ?? true);
+    }
+  }
+
+  Future<void> _toggleGlobalInterval() async {
+    final newValue = !_globalIntervalEnabled;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('global_interval_enabled', newValue);
+    setState(() => _globalIntervalEnabled = newValue);
+    _refreshCallbacks[0]?.call();
   }
 
   Future<void> _checkShizuku() async {
     final status = await _shizuku.checkStatus();
     if (!mounted) return;
+    final wasReady = _shizukuStatus == ShizukuStatus.ready;
     final prefs = await SharedPreferences.getInstance();
     if (status == ShizukuStatus.ready) {
       if (_shizukuReadySince == null) {
@@ -91,8 +109,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           _shizukuStatus = status;
           _shizukuReadySince = since;
         });
+        // Timer calls _checkShizuku so it detects when Shizuku goes offline
         _durationTimer ??= Timer.periodic(const Duration(seconds: 30), (_) {
-          if (mounted) setState(() {});
+          if (mounted) _checkShizuku();
         });
       } else {
         setState(() => _shizukuStatus = status);
@@ -105,6 +124,10 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         _shizukuStatus = status;
         _shizukuReadySince = null;
       });
+      // Notify user if Shizuku just went offline
+      if (wasReady) {
+        await _system.postShizukuOfflineNotification();
+      }
     }
   }
 
@@ -406,17 +429,38 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                   context,
                   MaterialPageRoute(builder: (_) => const SettingsScreen()),
                 ).then((_) {
-                  setState(() {});
+                  _loadIntervalSetting();
                   _refreshCallbacks[0]?.call();
                 });
               }
+              if (v == 'toggle_interval') _toggleGlobalInterval();
               if (v == 'backup') _backup();
               if (v == 'restore') _restore();
             },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'settings', child: Text('Settings')),
-              PopupMenuItem(value: 'backup', child: Text('Backup')),
-              PopupMenuItem(value: 'restore', child: Text('Restore')),
+            itemBuilder: (_) => [
+              if (_currentIndex == 0)
+                PopupMenuItem(
+                  value: 'toggle_interval',
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Interval checking'),
+                      IgnorePointer(
+                        child: Transform.scale(
+                          scale: 0.8,
+                          alignment: Alignment.centerRight,
+                          child: Switch(
+                            value: _globalIntervalEnabled,
+                            onChanged: (_) {},
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              const PopupMenuItem(value: 'settings', child: Text('Settings')),
+              const PopupMenuItem(value: 'backup', child: Text('Backup')),
+              const PopupMenuItem(value: 'restore', child: Text('Restore')),
             ],
           ),
         ],

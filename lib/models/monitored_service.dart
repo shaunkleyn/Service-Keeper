@@ -6,11 +6,14 @@ class MonitoredService {
   final String displayLabel;
   final String? appName;
   final int intervalMinutes;
+  // null = use global interval from settings; set = custom per-service interval
+  final int? customIntervalMinutes;
   final bool enabled;
   final DateTime? lastRestarted;
   final DateTime? lastChecked;
   final bool? wasRunning;
   final bool notificationsEnabled;
+  final bool appRestartEnabled;
 
   const MonitoredService({
     required this.packageName,
@@ -18,16 +21,21 @@ class MonitoredService {
     required this.displayLabel,
     this.appName,
     this.intervalMinutes = 15,
+    this.customIntervalMinutes,
     this.enabled = true,
     this.lastRestarted,
     this.lastChecked,
     this.wasRunning,
     this.notificationsEnabled = true,
+    this.appRestartEnabled = false,
   });
 
   String get workTag => '${packageName}_${serviceClass.replaceAll('.', '_')}';
 
   String get fullServiceName => '$packageName/$serviceClass';
+
+  // Sentinel used to distinguish "pass null explicitly" from "don't change"
+  static const _keep = Object();
 
   MonitoredService copyWith({
     String? packageName,
@@ -35,11 +43,14 @@ class MonitoredService {
     String? displayLabel,
     String? appName,
     int? intervalMinutes,
+    // Pass null to clear custom interval (reset to global); omit to keep current.
+    Object? customIntervalMinutes = _keep,
     bool? enabled,
     DateTime? lastRestarted,
     DateTime? lastChecked,
     bool? wasRunning,
     bool? notificationsEnabled,
+    bool? appRestartEnabled,
   }) {
     return MonitoredService(
       packageName: packageName ?? this.packageName,
@@ -47,11 +58,15 @@ class MonitoredService {
       displayLabel: displayLabel ?? this.displayLabel,
       appName: appName ?? this.appName,
       intervalMinutes: intervalMinutes ?? this.intervalMinutes,
+      customIntervalMinutes: identical(customIntervalMinutes, _keep)
+          ? this.customIntervalMinutes
+          : customIntervalMinutes as int?,
       enabled: enabled ?? this.enabled,
       lastRestarted: lastRestarted ?? this.lastRestarted,
       lastChecked: lastChecked ?? this.lastChecked,
       wasRunning: wasRunning ?? this.wasRunning,
       notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
+      appRestartEnabled: appRestartEnabled ?? this.appRestartEnabled,
     );
   }
 
@@ -61,30 +76,41 @@ class MonitoredService {
         'displayLabel': displayLabel,
         'appName': appName,
         'intervalMinutes': intervalMinutes,
+        'customIntervalMinutes': customIntervalMinutes,
         'enabled': enabled,
         'lastRestarted': lastRestarted?.toIso8601String(),
         'lastChecked': lastChecked?.toIso8601String(),
         'wasRunning': wasRunning,
         'notificationsEnabled': notificationsEnabled,
+        'appRestartEnabled': appRestartEnabled,
       };
 
-  factory MonitoredService.fromJson(Map<String, dynamic> json) =>
-      MonitoredService(
-        packageName: json['packageName'] as String,
-        serviceClass: json['serviceClass'] as String,
-        displayLabel: json['displayLabel'] as String,
-        appName: json['appName'] as String?,
-        intervalMinutes: json['intervalMinutes'] as int? ?? 15,
-        enabled: json['enabled'] as bool? ?? true,
-        lastRestarted: json['lastRestarted'] != null
-            ? DateTime.parse(json['lastRestarted'] as String)
-            : null,
-        lastChecked: json['lastChecked'] != null
-            ? DateTime.parse(json['lastChecked'] as String)
-            : null,
-        wasRunning: json['wasRunning'] as bool?,
-        notificationsEnabled: json['notificationsEnabled'] as bool? ?? true,
-      );
+  factory MonitoredService.fromJson(Map<String, dynamic> json) {
+    final intervalMinutes = json['intervalMinutes'] as int? ?? 15;
+    // Migration: old data has no customIntervalMinutes key — preserve their
+    // existing interval as custom so nothing changes after the upgrade.
+    final customIntervalMinutes = json.containsKey('customIntervalMinutes')
+        ? json['customIntervalMinutes'] as int?
+        : intervalMinutes;
+    return MonitoredService(
+      packageName: json['packageName'] as String,
+      serviceClass: json['serviceClass'] as String,
+      displayLabel: json['displayLabel'] as String,
+      appName: json['appName'] as String?,
+      intervalMinutes: intervalMinutes,
+      customIntervalMinutes: customIntervalMinutes,
+      enabled: json['enabled'] as bool? ?? true,
+      lastRestarted: json['lastRestarted'] != null
+          ? DateTime.parse(json['lastRestarted'] as String)
+          : null,
+      lastChecked: json['lastChecked'] != null
+          ? DateTime.parse(json['lastChecked'] as String)
+          : null,
+      wasRunning: json['wasRunning'] as bool?,
+      notificationsEnabled: json['notificationsEnabled'] as bool? ?? true,
+      appRestartEnabled: json['appRestartEnabled'] as bool? ?? false,
+    );
+  }
 
   static List<MonitoredService> listFromJson(String raw) {
     final List<dynamic> decoded = jsonDecode(raw) as List<dynamic>;
