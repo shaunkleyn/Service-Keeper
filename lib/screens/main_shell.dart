@@ -87,6 +87,14 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     // HomeScreen reads this itself; called here only to trigger HomeScreen refresh after settings change
   }
 
+  Future<void> _reloadBannerStates() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) setState(() {
+      _appRestartTipDismissed = prefs.getBool('app_restart_tip_dismissed') ?? false;
+      _monitoringExplainerDismissed = prefs.getBool('monitoring_explainer_dismissed') ?? false;
+    });
+  }
+
   Future<void> _checkShizuku() async {
     final status = await _shizuku.checkStatus();
     if (!mounted) return;
@@ -541,13 +549,18 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                 PopupMenuButton<String>(
                   onSelected: (v) {
                     if (v == 'settings') {
-                      Navigator.push(
+                      Navigator.push<bool>(
                         context,
                         MaterialPageRoute(
                             builder: (_) => const SettingsScreen()),
-                      ).then((_) {
+                      ).then((bannersReset) async {
                         _loadIntervalSetting();
                         _refreshCallbacks[0]?.call();
+                        if (bannersReset == true) {
+                          await _reloadBannerStates();
+                          _refreshCallbacks[1]?.call();
+                          _refreshCallbacks[2]?.call();
+                        }
                       });
                     }
                     if (v == 'backup') _backup();

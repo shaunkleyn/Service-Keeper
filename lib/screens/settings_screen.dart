@@ -50,6 +50,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() => _globalIntervalEnabled = value);
   }
 
+  Future<void> _resetBanners() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reset banners?'),
+        content: const Text(
+          'All dismissed tips and info banners will be shown again throughout the app, '
+          'as if it was just installed.',
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true), child: const Text('Reset')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final prefs = await SharedPreferences.getInstance();
+    for (final key in const [
+      'app_restart_tip_dismissed',
+      'monitoring_explainer_dismissed',
+      'a11y_perm_info_dismissed',
+      'a11y_revoke_banner_dismissed',
+      'notif_perm_info_dismissed',
+      'notif_revoke_banner_dismissed',
+    ]) {
+      await prefs.remove(key);
+    }
+    if (mounted) Navigator.pop(context, true);
+  }
+
   Future<void> _setDefaultInterval(int minutes) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('default_check_interval', minutes);
@@ -218,6 +250,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ),
+          const Divider(height: 1),
+          _sectionHeader(context, 'Banners'),
+          ListTile(
+            leading: Icon(Icons.info_outline,
+                color: theme.colorScheme.onSurfaceVariant),
+            title: const Text('Reset dismissed banners'),
+            subtitle: const Text(
+              'Shows all tips and info banners again throughout the app, '
+              'as if it was just installed.',
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _resetBanners,
+          ),
         ],
       ),
     );
