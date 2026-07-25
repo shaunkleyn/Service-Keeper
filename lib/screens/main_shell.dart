@@ -231,10 +231,12 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         const SizedBox(width: 8),
         Expanded(
           child: Text(
-            'Service Keeper uses Shizuku to restart services the moment a check detects one has stopped. '
-            'Interval checking runs these checks automatically in the background — without it, '
-            'checks only happen when you open the app or tap "Run monitor now". '
-            'Interval checking is optional but keeps services alive even when the app is closed.',
+            'Service Keeper runs a persistent background watcher that reads Android\'s activity log in real time. '
+            'The moment a monitored service stops — crash, force-stop, or system kill — '
+            'Service Keeper detects it and restarts it straight away. '
+            'Interval checking is a safety net: it periodically re-checks all services to catch '
+            'anything the live watcher may have missed (e.g. if Shizuku was briefly offline). '
+            'It\'s optional, but useful as a backup.',
             style: TextStyle(fontSize: 12, color: cs.onPrimaryContainer),
           ),
         ),
