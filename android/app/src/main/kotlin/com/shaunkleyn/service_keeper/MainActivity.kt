@@ -277,6 +277,19 @@ class MainActivity : FlutterActivity() {
                     try { startActivity(intent) } catch (e: Exception) { startActivity(fallback) }
                     result.success(null)
                 }
+                "getWallpaperSeedColor" -> {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+                        try {
+                            val wm = android.app.WallpaperManager.getInstance(applicationContext)
+                            val colors = wm.getWallpaperColors(android.app.WallpaperManager.FLAG_SYSTEM)
+                            result.success(colors?.primaryColor?.toArgb())
+                        } catch (e: Exception) {
+                            result.success(null)
+                        }
+                    } else {
+                        result.success(null)
+                    }
+                }
                 "openNotificationListenerSettings" -> {
                     val pkg = call.argument<String>("packageName")
                     val cls = call.argument<String>("serviceClass")

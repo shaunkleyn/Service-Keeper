@@ -41,8 +41,17 @@ dependencies:
   # App color extraction
   palette_generator: ^0.3.3
 
+  # Material You / dynamic color
+  dynamic_color: ^1.7.0
+
+  # Rolling toggle switch
+  lite_rolling_switch: ^1.0.1
+
   # Icons
   cupertino_icons: ^1.0.2
+  animated_toggle_switch: ^0.8.7
+  flex_color_scheme: ^8.4.0
+  google_fonts: ^8.2.0
 
 dev_dependencies:
   flutter_test:

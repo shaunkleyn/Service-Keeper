@@ -47,6 +47,15 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   VoidCallback? _checkStatuses;
   VoidCallback? _addService;
   SelectionState? _selectionState;
+  String? _undoLabel;
+  VoidCallback? _undoAction;
+
+  void _registerUndo(String? label, VoidCallback? action) {
+    setState(() {
+      _undoLabel = label;
+      _undoAction = action;
+    });
+  }
 
   @override
   void initState() {
@@ -532,6 +541,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                   ),
                 PopupMenuButton<String>(
                   onSelected: (v) {
+                    if (v == 'undo') _undoAction?.call();
                     if (v == 'settings') {
                       Navigator.push<bool>(
                         context,
@@ -551,6 +561,17 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                     if (v == 'restore') _restore();
                   },
                   itemBuilder: (_) => [
+                    if (_undoAction != null) ...[
+                      PopupMenuItem(
+                        value: 'undo',
+                        child: Row(children: [
+                          const Icon(Icons.undo, size: 18),
+                          const SizedBox(width: 8),
+                          Text('Undo: ${_undoLabel ?? 'last action'}'),
+                        ]),
+                      ),
+                      const PopupMenuDivider(),
+                    ],
                     const PopupMenuItem(
                         value: 'settings', child: Text('Settings')),
                     const PopupMenuItem(value: 'backup', child: Text('Backup')),
@@ -589,12 +610,14 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                     },
                     onSelectionChange: (state) =>
                         setState(() => _selectionState = state),
+                    onUndoChange: _registerUndo,
                   ),
                 ),
                 _KeepAlive(
                   child: AccessibilityMonitorScreen(
                     onRegisterRefresh: (cb) => _refreshCallbacks[1] = cb,
                     pageController: _pageController,
+                    onUndoChange: _registerUndo,
                   ),
                 ),
                 _KeepAlive(

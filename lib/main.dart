@@ -1,6 +1,12 @@
+import 'package:dynamic_color/dynamic_color.dart';
+import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
+import 'app_settings_notifier.dart';
 import 'screens/main_shell.dart';
+import 'services/app_info_service.dart';
 
 @pragma('vm:entry-point')
 void callbackDispatcher() {
@@ -42,6 +48,13 @@ Future<void> _checkAndRestart(
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  final prefs = await SharedPreferences.getInstance();
+  materialYouNotifier.value = prefs.getBool('use_material_you') ?? false;
+
+  if (materialYouNotifier.value) {
+    wallpaperSeedNotifier.value = await AppInfoService.getWallpaperSeedColor();
+  }
+
   await Workmanager().initialize(
     callbackDispatcher,
     isInDebugMode: false,
@@ -50,29 +63,66 @@ void main() async {
   runApp(const ServiceKeeperApp());
 }
 
+const _defaultSeed = Color(0xFF0D6EFD); // Bootstrap primary
+
+const _subThemes = FlexSubThemesData(
+  defaultRadius: 4,
+  elevatedButtonRadius: 4,
+  outlinedButtonRadius: 4,
+  textButtonRadius: 4,
+  filledButtonRadius: 4,
+  cardRadius: 4,
+  inputDecoratorRadius: 4,
+  dialogRadius: 6,
+  bottomSheetRadius: 6,
+  chipRadius: 4,
+);
+
+ThemeData _buildLight(ColorScheme? dynamic, Color? seed) {
+  final scheme = dynamic ??
+      ColorScheme.fromSeed(seedColor: seed ?? _defaultSeed, brightness: Brightness.light);
+  return FlexColorScheme.light(
+    colorScheme: scheme,
+    subThemesData: _subThemes,
+  ).toTheme.copyWith(
+    textTheme: GoogleFonts.interTextTheme(ThemeData.light().textTheme),
+  );
+}
+
+ThemeData _buildDark(ColorScheme? dynamic, Color? seed) {
+  final scheme = dynamic ??
+      ColorScheme.fromSeed(seedColor: seed ?? _defaultSeed, brightness: Brightness.dark);
+  return FlexColorScheme.dark(
+    colorScheme: scheme,
+    subThemesData: _subThemes,
+  ).toTheme.copyWith(
+    textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
+  );
+}
+
 class ServiceKeeperApp extends StatelessWidget {
   const ServiceKeeperApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Service Keeper',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1A73E8),
-          brightness: Brightness.light,
-        ),
-        useMaterial3: true,
-      ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1A73E8),
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
-      home: const MainShell(),
+    return DynamicColorBuilder(
+      builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
+        return ListenableBuilder(
+          listenable: Listenable.merge([materialYouNotifier, wallpaperSeedNotifier]),
+          builder: (context, _) {
+            final useMY = materialYouNotifier.value;
+            final seed = wallpaperSeedNotifier.value;
+
+            return MaterialApp(
+              title: 'Service Keeper',
+              debugShowCheckedModeBanner: false,
+              theme: _buildLight(useMY ? lightDynamic : null, useMY ? seed : null),
+              darkTheme: _buildDark(useMY ? darkDynamic : null, useMY ? seed : null),
+              home: const MainShell(),
+            );
+          },
+        );
+      },
     );
   }
 }

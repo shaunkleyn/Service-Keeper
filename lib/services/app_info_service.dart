@@ -3,6 +3,15 @@ import 'package:flutter/services.dart';
 class AppInfoService {
   static const _channel = MethodChannel('com.shaunkleyn.service_keeper/shizuku');
 
+  static Future<Color?> getWallpaperSeedColor() async {
+    try {
+      final argb = await _channel.invokeMethod<int>('getWallpaperSeedColor');
+      return argb != null ? Color(argb) : null;
+    } on PlatformException {
+      return null;
+    }
+  }
+
   Future<String?> getAppName(String packageName) async {
     try {
       return await _channel.invokeMethod<String>('getAppName', {'packageName': packageName});
