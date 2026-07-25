@@ -284,7 +284,7 @@ class _AppGroupCardHeaderDelegate extends SliverPersistentHeaderDelegate {
                       ),
                     ),
                     if (groupState != null && onGroupStateChanged != null)
-                      _buildToggle(theme, fg, bodyBg),
+                      _buildToggle(theme, fg, bodyBg, appColor: appColor),
                     if (menuItems.isNotEmpty)
                       PopupMenuButton<String>(
                         icon: Icon(Icons.more_vert, size: 20, color: fg),
@@ -307,40 +307,53 @@ class _AppGroupCardHeaderDelegate extends SliverPersistentHeaderDelegate {
     );
   }
 
-  Widget _buildToggle(ThemeData theme, Color fg, Color bodyBg) {
+  Widget _buildToggle(ThemeData theme, Color fg, Color bodyBg, {Color? appColor}) {
     final cs = theme.colorScheme;
-    var firstSelected = false;
-    var secondSelected = false;
-    var thirdSelected = false;
+    final current = groupState!;
 
-    Color indicatorFor(int value) => switch (value) {
-          0 => fg.withValues(alpha: 0.8),
-          1 => hasIssue ? cs.errorContainer : Colors.green,
-          _ => cs.primaryContainer,
-        };
+    Color indicatorFor(int value, {Color? bg, Color? fg}) {
+      final Color color1;
+      switch (value) {
+        case 0:
+          color1 = current == 0 ? bg ?? cs.outlineVariant : fg ?? cs.secondaryContainer;
+          break;
+        case 1:
+          color1 = hasIssue ? cs.errorContainer : (current >= 1 ? fg ?? cs.secondaryContainer : bg ?? cs.secondaryContainer);
+          break;
+        default:
+          color1 = (current >= 2 ? bg ?? cs.secondaryContainer : fg ?? cs.secondaryContainer);
+          break;
+      }
+      return color1;
+    }
 
-    Color iconColorFor(int value) => switch (value) {
-          0 => ThemeData.estimateBrightnessForColor(appColor ?? cs.surfaceContainerLow) ==
-                Brightness.dark
-            ? Colors.white
-            : Colors.black26,
-          1 => hasIssue ? cs.onErrorContainer : cs.surfaceContainerLow,
-          _ => cs.onPrimaryContainer,
-        };
+    Widget iconFor(int value, {Color? bg, Color? fg}) {
+      final IconData icon;
+      final Color color;
 
-    IconData iconFor(int value) => switch (value) {
-          0 => Icons.block_outlined,
-          1 => hasIssue ? Icons.warning_amber : Icons.check_rounded,
-          _ => Icons.notifications,
-        };
+      switch (value) {
+        case 0:
+          icon = current == 0 ? Icons.block_outlined : Icons.check_circle;
+          color = current == 0 ? fg ?? cs.onSurfaceVariant : fg ?? Colors.green;
+          break;
+        case 1:
+          icon = current >= 1 ? Icons.visibility : Icons.visibility_off;
+          color = current >= 1 ? fg ?? Colors.green : bg ?? cs.onSurfaceVariant;
+        default:
+          icon = current >= 2 ? Icons.notifications : Icons.notifications_off;
+          color = current >= 2 ? fg ?? Colors.green : bg ?? cs.onSurfaceVariant;
+      }
+
+      return Icon(icon, size: 16, color: color);
+    }
 
     return AnimatedToggleSwitch<int>.size(
-      current: groupState!,
+      current: current,
       values: const [0, 1, 2],
       height: 32,
       indicatorSize: const Size(20, 20),
       borderWidth: 2,
-      spacing: 7,
+      spacing: 10,
       iconOpacity: 1.0,
       selectedIconScale: 1.0,
       loading: false,
@@ -357,11 +370,12 @@ class _AppGroupCardHeaderDelegate extends SliverPersistentHeaderDelegate {
         borderRadius: BorderRadius.circular(20),
         indicatorBorderRadius: BorderRadius.circular(20),
       ),
-      styleBuilder: (value) => ToggleStyle(indicatorColor: indicatorFor(value)),
+      // styleBuilder: (value) => ToggleStyle(indicatorColor: indicatorFor(value, bg: appColor, fg: fg)),
+      styleBuilder: (value) => ToggleStyle(indicatorColor: indicatorFor(value, bg: appColor, fg: fg), ),
       iconBuilder: (value) => Padding(
         padding: const EdgeInsets.only(top: 8),
-        child: Icon(iconFor(value), size: 16, color: iconColorFor(value)),
-      ), 
+        child: iconFor(value, bg: appColor, fg: appColor != null ? fg : null),
+      ),
       onChanged: onGroupStateChanged!,
     );
   }
