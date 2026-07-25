@@ -41,6 +41,8 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
   Map<String, bool> _expandedGroups = {};
   bool _useAppColors = false;
   bool _loading = true;
+  bool _permInfoDismissed = false;
+  bool _revokeBannerDismissed = false;
 
   @override
   void initState() {
@@ -109,6 +111,8 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
         _enabledKeys = enabled;
         _monitoredKeys = monKeys;
         _notifOffKeys = notifOff;
+        _permInfoDismissed = prefs.getBool('notif_perm_info_dismissed') ?? false;
+        _revokeBannerDismissed = prefs.getBool('notif_revoke_banner_dismissed') ?? false;
         _loading = false;
         for (final s in notif) {
           _expandedGroups.putIfAbsent(s.packageName, () => false);
@@ -120,8 +124,27 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
   }
 
   Future<void> _refreshEnabledState() async {
+    final prev = Set<String>.from(_enabledKeys);
     final enabled = await _system.getEnabledNotificationListeners();
-    if (mounted) setState(() => _enabledKeys = enabled);
+    if (!mounted) return;
+    final newlyEnabled = enabled
+        .difference(prev)
+        .where((k) => _notifServices.any((s) => '${s.packageName}/${s.serviceClass}' == k))
+        .toSet();
+    final revoked = prev.difference(enabled).where(_monitoredKeys.contains).toSet();
+    setState(() {
+      _enabledKeys = enabled;
+      if (newlyEnabled.isNotEmpty) _monitoredKeys = {..._monitoredKeys, ...newlyEnabled};
+      if (revoked.isNotEmpty) _monitoredKeys = Set.from(_monitoredKeys)..removeAll(revoked);
+    });
+    for (final k in newlyEnabled) {
+      final slash = k.indexOf('/');
+      if (slash >= 0) await _storage.addNotifMonitored(k.substring(0, slash), k.substring(slash + 1));
+    }
+    for (final k in revoked) {
+      final slash = k.indexOf('/');
+      if (slash >= 0) await _storage.removeNotifMonitored(k.substring(0, slash), k.substring(slash + 1));
+    }
   }
 
   Future<void> _fetchIcons(Set<String> packages) async {
@@ -202,8 +225,18 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
       String packageName, List<({String serviceClass, String appName})> services) async {
     final allOn =
         services.every((s) => _monitoredKeys.contains('$packageName/${s.serviceClass}'));
+    final applicable = allOn
+        ? services
+        : services
+            .where((s) => _enabledKeys.contains('$packageName/${s.serviceClass}'))
+            .toList();
+    if (!allOn && applicable.isEmpty) {
+      _showPermissionRequiredDialog(
+          packageName, services.first.serviceClass, services.first.appName);
+      return;
+    }
     setState(() {
-      for (final s in services) {
+      for (final s in applicable) {
         final key = '$packageName/${s.serviceClass}';
         if (allOn)
           _monitoredKeys.remove(key);
@@ -211,13 +244,65 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
           _monitoredKeys.add(key);
       }
     });
-    for (final s in services) {
+    for (final s in applicable) {
       if (allOn) {
         await _storage.removeNotifMonitored(packageName, s.serviceClass);
       } else {
         await _storage.addNotifMonitored(packageName, s.serviceClass);
       }
     }
+  }
+
+  Future<void> _showPermissionRequiredDialog(
+      String packageName, String serviceClass, String appName) async {
+    if (!mounted) return;
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Permission Required'),
+        content: Text(
+          '$appName needs its Notification Listener permission granted in Android Settings '
+          'before Service Keeper can monitor it.\n\nOpen Android Settings now?',
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Open Settings')),
+        ],
+      ),
+    );
+    if (result == true && mounted) {
+      await _system.openNotificationListenerSettings(
+          packageName: packageName, serviceClass: serviceClass);
+    }
+  }
+
+  Widget _buildDismissableBanner({
+    required bool dismissed,
+    required String text,
+    required VoidCallback onDismiss,
+    IconData icon = Icons.info_outline,
+  }) {
+    if (dismissed) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      color: cs.primaryContainer.withValues(alpha: 0.4),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(children: [
+        Icon(icon, size: 14, color: cs.onPrimaryContainer),
+        const SizedBox(width: 8),
+        Expanded(
+            child: Text(text, style: TextStyle(fontSize: 12, color: cs.onPrimaryContainer))),
+        const SizedBox(width: 8),
+        GestureDetector(
+          onTap: onDismiss,
+          child: Icon(Icons.close, size: 16, color: cs.onPrimaryContainer),
+        ),
+      ]),
+    );
   }
 
   Future<void> _toggleAppNotif(
@@ -366,7 +451,6 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final groups = _grouped();
     final pkgs = groups.keys.toList()
       ..sort((a, b) {
@@ -379,21 +463,26 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
 
     return Column(
       children: [
-        Container(
-          width: double.infinity,
-          color: cs.primaryContainer.withValues(alpha: 0.4),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          child: Row(children: [
-            Icon(Icons.info_outline, size: 14, color: cs.onPrimaryContainer),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Toggle monitoring to automatically re-enable any notification listener '
-                'that Android disables in the background.',
-                style: TextStyle(fontSize: 12, color: cs.onPrimaryContainer),
-              ),
-            ),
-          ]),
+        _buildDismissableBanner(
+          dismissed: _permInfoDismissed,
+          text: 'The apps listed here support Notification Listeners. '
+              'Before Service Keeper can monitor one, its permission must be granted in Android Settings.',
+          onDismiss: () async {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setBool('notif_perm_info_dismissed', true);
+            if (mounted) setState(() => _permInfoDismissed = true);
+          },
+        ),
+        _buildDismissableBanner(
+          dismissed: _revokeBannerDismissed,
+          text: 'Disabling monitoring here does not revoke the app\'s Android notification listener permission. '
+              'To revoke, go to Android Settings.',
+          icon: Icons.lock_open_outlined,
+          onDismiss: () async {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setBool('notif_revoke_banner_dismissed', true);
+            if (mounted) setState(() => _revokeBannerDismissed = true);
+          },
         ),
         Expanded(
           child: pkgs.isEmpty
@@ -435,6 +524,8 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
                                   ),
                                   onReportIssue: () =>
                                       _reportAppIssue(pkg, groups[pkg]!.first.appName, groups[pkg]!),
+                                  onManagePermission: () =>
+                                      _system.openNotificationListenerSettings(packageName: pkg),
                                 ),
                               ),
                               if (_expandedGroups[pkg] == true)
@@ -498,19 +589,25 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
                                                 trailing: Row(
                                                   mainAxisSize: MainAxisSize.min,
                                                   children: [
-                                                    Transform.scale(
-                                                      scale: 0.8,
-                                                      alignment: Alignment.centerRight,
-                                                      child: Switch(
-                                                        value: monitored,
-                                                        thumbColor: WidgetStateProperty.resolveWith(
-                                                            (s) => s.contains(WidgetState.selected) ? appColor : null),
-                                                        trackColor: WidgetStateProperty.resolveWith(
-                                                            (s) => s.contains(WidgetState.selected) ? appColor?.withValues(alpha: 0.5) : null),
-                                                        onChanged: (_) => _toggle(
-                                                            pkg,
-                                                            svc.serviceClass,
-                                                            svc.appName),
+                                                    Opacity(
+                                                      opacity: enabled ? 1.0 : 0.45,
+                                                      child: Transform.scale(
+                                                        scale: 0.8,
+                                                        alignment: Alignment.centerRight,
+                                                        child: Switch(
+                                                          value: monitored,
+                                                          thumbColor: WidgetStateProperty.resolveWith(
+                                                              (s) => s.contains(WidgetState.selected) ? appColor : null),
+                                                          trackColor: WidgetStateProperty.resolveWith(
+                                                              (s) => s.contains(WidgetState.selected) ? appColor?.withValues(alpha: 0.5) : null),
+                                                          onChanged: (_) {
+                                                            if (!enabled) {
+                                                              _showPermissionRequiredDialog(pkg, svc.serviceClass, svc.appName);
+                                                            } else {
+                                                              _toggle(pkg, svc.serviceClass, svc.appName);
+                                                            }
+                                                          },
+                                                        ),
                                                       ),
                                                     ),
                                                     PopupMenuButton<String>(
@@ -535,6 +632,11 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
                                                             ),
                                                           );
                                                         }
+                                                        if (v == 'manage_permission') {
+                                                          _system.openNotificationListenerSettings(
+                                                              packageName: pkg,
+                                                              serviceClass: svc.serviceClass);
+                                                        }
                                                         if (v == 'report_issue') {
                                                           _reportServiceIssue(
                                                             pkg,
@@ -550,6 +652,14 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
                                                             Icon(Icons.history, size: 18),
                                                             SizedBox(width: 8),
                                                             Text('History'),
+                                                          ]),
+                                                        ),
+                                                        const PopupMenuItem(
+                                                          value: 'manage_permission',
+                                                          child: Row(children: [
+                                                            Icon(Icons.security_outlined, size: 18),
+                                                            SizedBox(width: 8),
+                                                            Text('Manage permission'),
                                                           ]),
                                                         ),
                                                         const PopupMenuDivider(),
@@ -608,6 +718,7 @@ class _NotifGroupHeaderDelegate extends SliverPersistentHeaderDelegate {
   final VoidCallback onToggleNotif;
   final VoidCallback onOpenHistory;
   final VoidCallback onReportIssue;
+  final VoidCallback onManagePermission;
 
   const _NotifGroupHeaderDelegate({
     required this.packageName,
@@ -624,6 +735,7 @@ class _NotifGroupHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.onToggleNotif,
     required this.onOpenHistory,
     required this.onReportIssue,
+    required this.onManagePermission,
   });
 
   @override
@@ -767,6 +879,8 @@ class _NotifGroupHeaderDelegate extends SliverPersistentHeaderDelegate {
                             ));
                           } else if (v == 'history') {
                             onOpenHistory();
+                          } else if (v == 'manage_permission') {
+                            onManagePermission();
                           } else if (v == 'report_issue') {
                             onReportIssue();
                           }
@@ -794,6 +908,14 @@ class _NotifGroupHeaderDelegate extends SliverPersistentHeaderDelegate {
                               Icon(Icons.history, size: 18),
                               SizedBox(width: 8),
                               Text('History'),
+                            ]),
+                          ),
+                          const PopupMenuItem(
+                            value: 'manage_permission',
+                            child: Row(children: [
+                              Icon(Icons.security_outlined, size: 18),
+                              SizedBox(width: 8),
+                              Text('Manage permission'),
                             ]),
                           ),
                           const PopupMenuDivider(),
@@ -830,7 +952,8 @@ class _NotifGroupHeaderDelegate extends SliverPersistentHeaderDelegate {
       old.notifOffKeys != notifOffKeys ||
       old.appColor != appColor ||
       old.iconBytes != iconBytes ||
-      old.onReportIssue != onReportIssue;
+      old.onReportIssue != onReportIssue ||
+      old.onManagePermission != onManagePermission;
 }
 
 class _StatusChip extends StatelessWidget {

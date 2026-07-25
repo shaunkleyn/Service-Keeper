@@ -262,6 +262,36 @@ class MainActivity : FlutterActivity() {
                     nm.notify(9000, notif)
                     result.success(null)
                 }
+                "openAccessibilitySettings" -> {
+                    val pkg = call.argument<String>("packageName")
+                    val cls = call.argument<String>("serviceClass")
+                    val fallback = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    val intent = if (pkg != null && cls != null && android.os.Build.VERSION.SDK_INT >= 33) {
+                        try {
+                            val comp = android.content.ComponentName(pkg, cls)
+                            Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS").apply {
+                                putExtra("android.provider.extra.ACCESSIBILITY_SHORTCUT_SERVICE", comp.flattenToString())
+                            }
+                        } catch (e: Exception) { fallback }
+                    } else fallback
+                    try { startActivity(intent) } catch (e: Exception) { startActivity(fallback) }
+                    result.success(null)
+                }
+                "openNotificationListenerSettings" -> {
+                    val pkg = call.argument<String>("packageName")
+                    val cls = call.argument<String>("serviceClass")
+                    val fallback = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                    val intent = if (pkg != null && cls != null && android.os.Build.VERSION.SDK_INT >= 30) {
+                        try {
+                            val comp = android.content.ComponentName(pkg, cls)
+                            Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).apply {
+                                putExtra(Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME, comp.flattenToString())
+                            }
+                        } catch (e: Exception) { fallback }
+                    } else fallback
+                    try { startActivity(intent) } catch (e: Exception) { startActivity(fallback) }
+                    result.success(null)
+                }
                 else -> result.notImplemented()
             }
         }

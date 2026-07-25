@@ -39,6 +39,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   bool _batteryExempt = true;
   bool _notificationPermissionGranted = true;
   bool _globalIntervalEnabled = true;
+  bool _appRestartTipDismissed = false;
 
   final _refreshCallbacks = <int, VoidCallback>{};
   VoidCallback? _runMonitorNow;
@@ -75,6 +76,8 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     await _checkBatteryOptimization();
     await _checkNotificationPermission();
     await _loadIntervalSetting();
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) setState(() => _appRestartTipDismissed = prefs.getBool('app_restart_tip_dismissed') ?? false);
   }
 
   Future<void> _loadIntervalSetting() async {
@@ -151,6 +154,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     final since = _shizukuReadySince;
     if (since == null) return '';
     final d = DateTime.now().difference(since);
+    if (d.inDays > 0) return '${d.inDays}d ${d.inHours.remainder(24)}h ${d.inMinutes.remainder(60)}m';
     if (d.inHours > 0) return '${d.inHours}h ${d.inMinutes.remainder(60)}m';
     if (d.inMinutes > 0) return '${d.inMinutes}m';
     return 'just now';
@@ -206,6 +210,34 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           Text('Tap to fix →', style: TextStyle(color: Colors.deepOrange, fontSize: 12)),
         ]),
       ),
+    );
+  }
+
+  Widget _buildAppRestartTipBanner() {
+    if (_appRestartTipDismissed || _currentIndex != 0) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      color: cs.tertiaryContainer.withValues(alpha: 0.45),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(children: [
+        Icon(Icons.open_in_browser_outlined, size: 16, color: cs.onTertiaryContainer),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            "Tip: If a service can't be started directly, enable \"Restart whole app\" in its Configure menu to launch the app instead.",
+            style: TextStyle(fontSize: 12, color: cs.onTertiaryContainer),
+          ),
+        ),
+        const SizedBox(width: 8),
+        GestureDetector(
+          onTap: () async {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setBool('app_restart_tip_dismissed', true);
+            if (mounted) setState(() => _appRestartTipDismissed = true);
+          },
+          child: Icon(Icons.close, size: 16, color: cs.onTertiaryContainer),
+        ),
+      ]),
     );
   }
 
@@ -529,6 +561,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           _buildShizukuBanner(),
           _buildBatteryBanner(),
           _buildNotificationPermissionBanner(),
+          _buildAppRestartTipBanner(),
           Expanded(
             child: PageView(
               controller: _pageController,

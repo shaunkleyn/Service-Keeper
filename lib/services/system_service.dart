@@ -136,4 +136,26 @@ class SystemService {
       // ignore
     }
   }
+
+  Future<void> openAccessibilitySettings({String? packageName, String? serviceClass}) async {
+    try {
+      await _channel.invokeMethod('openAccessibilitySettings', {
+        if (packageName != null) 'packageName': packageName,
+        if (serviceClass != null) 'serviceClass': serviceClass,
+      });
+    } on PlatformException {
+      // ignore
+    }
+  }
+
+  Future<void> openNotificationListenerSettings({String? packageName, String? serviceClass}) async {
+    try {
+      await _channel.invokeMethod('openNotificationListenerSettings', {
+        if (packageName != null) 'packageName': packageName,
+        if (serviceClass != null) 'serviceClass': serviceClass,
+      });
+    } on PlatformException {
+      // ignore
+    }
+  }
 }

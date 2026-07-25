@@ -42,6 +42,8 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
   Map<String, bool> _expandedGroups = {};
   bool _useAppColors = false;
   bool _loading = true;
+  bool _permInfoDismissed = false;
+  bool _revokeBannerDismissed = false;
 
   @override
   void initState() {
@@ -108,6 +110,8 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
         _enabledKeys = enabled;
         _monitoredKeys = monKeys;
         _notifOffKeys = notifOff;
+        _permInfoDismissed = prefs.getBool('a11y_perm_info_dismissed') ?? false;
+        _revokeBannerDismissed = prefs.getBool('a11y_revoke_banner_dismissed') ?? false;
         _loading = false;
         for (final s in a11y) {
           _expandedGroups.putIfAbsent(s.packageName, () => false);
@@ -119,8 +123,27 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
   }
 
   Future<void> _refreshEnabledState() async {
+    final prev = Set<String>.from(_enabledKeys);
     final enabled = await _system.getEnabledAccessibilityServices();
-    if (mounted) setState(() => _enabledKeys = enabled);
+    if (!mounted) return;
+    final newlyEnabled = enabled
+        .difference(prev)
+        .where((k) => _a11yServices.any((s) => '${s.packageName}/${s.serviceClass}' == k))
+        .toSet();
+    final revoked = prev.difference(enabled).where(_monitoredKeys.contains).toSet();
+    setState(() {
+      _enabledKeys = enabled;
+      if (newlyEnabled.isNotEmpty) _monitoredKeys = {..._monitoredKeys, ...newlyEnabled};
+      if (revoked.isNotEmpty) _monitoredKeys = Set.from(_monitoredKeys)..removeAll(revoked);
+    });
+    for (final k in newlyEnabled) {
+      final slash = k.indexOf('/');
+      if (slash >= 0) await _storage.addA11yMonitored(k.substring(0, slash), k.substring(slash + 1));
+    }
+    for (final k in revoked) {
+      final slash = k.indexOf('/');
+      if (slash >= 0) await _storage.removeA11yMonitored(k.substring(0, slash), k.substring(slash + 1));
+    }
   }
 
   Future<void> _fetchIcons(Set<String> packages) async {
@@ -201,8 +224,18 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
       String packageName, List<({String serviceClass, String appName})> services) async {
     final allOn =
         services.every((s) => _monitoredKeys.contains('$packageName/${s.serviceClass}'));
+    final applicable = allOn
+        ? services
+        : services
+            .where((s) => _enabledKeys.contains('$packageName/${s.serviceClass}'))
+            .toList();
+    if (!allOn && applicable.isEmpty) {
+      _showPermissionRequiredDialog(
+          packageName, services.first.serviceClass, services.first.appName);
+      return;
+    }
     setState(() {
-      for (final s in services) {
+      for (final s in applicable) {
         final key = '$packageName/${s.serviceClass}';
         if (allOn)
           _monitoredKeys.remove(key);
@@ -210,13 +243,65 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
           _monitoredKeys.add(key);
       }
     });
-    for (final s in services) {
+    for (final s in applicable) {
       if (allOn) {
         await _storage.removeA11yMonitored(packageName, s.serviceClass);
       } else {
         await _storage.addA11yMonitored(packageName, s.serviceClass);
       }
     }
+  }
+
+  Future<void> _showPermissionRequiredDialog(
+      String packageName, String serviceClass, String appName) async {
+    if (!mounted) return;
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Permission Required'),
+        content: Text(
+          '$appName needs its Accessibility Service permission granted in Android Settings '
+          'before Service Keeper can monitor it.\n\nOpen Android Settings now?',
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Open Settings')),
+        ],
+      ),
+    );
+    if (result == true && mounted) {
+      await _system.openAccessibilitySettings(
+          packageName: packageName, serviceClass: serviceClass);
+    }
+  }
+
+  Widget _buildDismissableBanner({
+    required bool dismissed,
+    required String text,
+    required VoidCallback onDismiss,
+    IconData icon = Icons.info_outline,
+  }) {
+    if (dismissed) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      color: cs.primaryContainer.withValues(alpha: 0.4),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(children: [
+        Icon(icon, size: 14, color: cs.onPrimaryContainer),
+        const SizedBox(width: 8),
+        Expanded(
+            child: Text(text, style: TextStyle(fontSize: 12, color: cs.onPrimaryContainer))),
+        const SizedBox(width: 8),
+        GestureDetector(
+          onTap: onDismiss,
+          child: Icon(Icons.close, size: 16, color: cs.onPrimaryContainer),
+        ),
+      ]),
+    );
   }
 
   Future<void> _toggleAppNotif(
@@ -365,7 +450,6 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final groups = _grouped();
     final pkgs = groups.keys.toList()
       ..sort((a, b) {
@@ -378,21 +462,26 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
 
     return Column(
       children: [
-        Container(
-          width: double.infinity,
-          color: cs.primaryContainer.withValues(alpha: 0.4),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          child: Row(children: [
-            Icon(Icons.info_outline, size: 14, color: cs.onPrimaryContainer),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Toggle monitoring to automatically re-enable any accessibility service '
-                'that Android disables in the background.',
-                style: TextStyle(fontSize: 12, color: cs.onPrimaryContainer),
-              ),
-            ),
-          ]),
+        _buildDismissableBanner(
+          dismissed: _permInfoDismissed,
+          text: 'The apps listed here support Accessibility Services. '
+              'Before Service Keeper can monitor one, its permission must be granted in Android Settings.',
+          onDismiss: () async {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setBool('a11y_perm_info_dismissed', true);
+            if (mounted) setState(() => _permInfoDismissed = true);
+          },
+        ),
+        _buildDismissableBanner(
+          dismissed: _revokeBannerDismissed,
+          text: 'Disabling monitoring here does not revoke the app\'s Android accessibility permission. '
+              'To revoke, go to Android Settings.',
+          icon: Icons.lock_open_outlined,
+          onDismiss: () async {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setBool('a11y_revoke_banner_dismissed', true);
+            if (mounted) setState(() => _revokeBannerDismissed = true);
+          },
         ),
         Expanded(
           child: pkgs.isEmpty
@@ -430,6 +519,8 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
                               ),
                               onReportIssue: () =>
                                   _reportAppIssue(pkg, groups[pkg]!.first.appName, groups[pkg]!),
+                              onManagePermission: () =>
+                                  _system.openAccessibilitySettings(packageName: pkg),
                             ),
                           ),
                           if (_expandedGroups[pkg] == true)
@@ -507,19 +598,25 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
                                                         : (appColor ??
                                                             tileTheme.colorScheme.primary),
                                                   ),
-                                                  Transform.scale(
-                                                    scale: 0.8,
-                                                    alignment: Alignment.centerRight,
-                                                    child: Switch(
-                                                      value: monitored,
-                                                      thumbColor: WidgetStateProperty.resolveWith(
-                                                          (s) => s.contains(WidgetState.selected) ? appColor : null),
-                                                      trackColor: WidgetStateProperty.resolveWith(
-                                                          (s) => s.contains(WidgetState.selected) ? appColor?.withValues(alpha: 0.5) : null),
-                                                      onChanged: (_) => _toggle(
-                                                          pkg,
-                                                          svc.serviceClass,
-                                                          svc.appName),
+                                                  Opacity(
+                                                    opacity: enabled ? 1.0 : 0.45,
+                                                    child: Transform.scale(
+                                                      scale: 0.8,
+                                                      alignment: Alignment.centerRight,
+                                                      child: Switch(
+                                                        value: monitored,
+                                                        thumbColor: WidgetStateProperty.resolveWith(
+                                                            (s) => s.contains(WidgetState.selected) ? appColor : null),
+                                                        trackColor: WidgetStateProperty.resolveWith(
+                                                            (s) => s.contains(WidgetState.selected) ? appColor?.withValues(alpha: 0.5) : null),
+                                                        onChanged: (_) {
+                                                          if (!enabled) {
+                                                            _showPermissionRequiredDialog(pkg, svc.serviceClass, svc.appName);
+                                                          } else {
+                                                            _toggle(pkg, svc.serviceClass, svc.appName);
+                                                          }
+                                                        },
+                                                      ),
                                                     ),
                                                   ),
                                                   PopupMenuButton<String>(
@@ -544,6 +641,11 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
                                                           ),
                                                         );
                                                       }
+                                                      if (v == 'manage_permission') {
+                                                        _system.openAccessibilitySettings(
+                                                            packageName: pkg,
+                                                            serviceClass: svc.serviceClass);
+                                                      }
                                                       if (v == 'report_issue') {
                                                         _reportServiceIssue(
                                                           pkg,
@@ -559,6 +661,14 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
                                                           Icon(Icons.history, size: 18),
                                                           SizedBox(width: 8),
                                                           Text('History'),
+                                                        ]),
+                                                      ),
+                                                      const PopupMenuItem(
+                                                        value: 'manage_permission',
+                                                        child: Row(children: [
+                                                          Icon(Icons.security_outlined, size: 18),
+                                                          SizedBox(width: 8),
+                                                          Text('Manage permission'),
                                                         ]),
                                                       ),
                                                       const PopupMenuDivider(),
@@ -616,6 +726,7 @@ class _A11yGroupHeaderDelegate extends SliverPersistentHeaderDelegate {
   final VoidCallback onToggleNotif;
   final VoidCallback onOpenHistory;
   final VoidCallback onReportIssue;
+  final VoidCallback onManagePermission;
 
   const _A11yGroupHeaderDelegate({
     required this.packageName,
@@ -632,6 +743,7 @@ class _A11yGroupHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.onToggleNotif,
     required this.onOpenHistory,
     required this.onReportIssue,
+    required this.onManagePermission,
   });
 
   @override
@@ -777,6 +889,8 @@ class _A11yGroupHeaderDelegate extends SliverPersistentHeaderDelegate {
                           ));
                         } else if (v == 'history') {
                           onOpenHistory();
+                        } else if (v == 'manage_permission') {
+                          onManagePermission();
                         } else if (v == 'report_issue') {
                           onReportIssue();
                         }
@@ -804,6 +918,14 @@ class _A11yGroupHeaderDelegate extends SliverPersistentHeaderDelegate {
                             Icon(Icons.history, size: 18),
                             SizedBox(width: 8),
                             Text('History'),
+                          ]),
+                        ),
+                        const PopupMenuItem(
+                          value: 'manage_permission',
+                          child: Row(children: [
+                            Icon(Icons.security_outlined, size: 18),
+                            SizedBox(width: 8),
+                            Text('Manage permission'),
                           ]),
                         ),
                         const PopupMenuDivider(),
@@ -842,7 +964,8 @@ class _A11yGroupHeaderDelegate extends SliverPersistentHeaderDelegate {
       old.notifOffKeys != notifOffKeys ||
       old.onToggleAll != onToggleAll ||
       old.onToggleNotif != onToggleNotif ||
-      old.onReportIssue != onReportIssue;
+      old.onReportIssue != onReportIssue ||
+      old.onManagePermission != onManagePermission;
 }
 
 class _StatusChip extends StatelessWidget {
