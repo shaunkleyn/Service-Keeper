@@ -172,7 +172,20 @@ class _AppGroupCardHeaderDelegate extends SliverPersistentHeaderDelegate {
   double get maxExtent => 80;
 
   @override
-  bool shouldRebuild(_AppGroupCardHeaderDelegate old) => true;
+bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
+    expanded != old.expanded ||
+    packageName != old.packageName ||
+    appName != old.appName ||
+    iconBytes != old.iconBytes ||
+    appColor != old.appColor ||
+    subtitle != old.subtitle ||
+    groupState != old.groupState ||
+    hasIssue != old.hasIssue ||
+    icon != old.icon ||
+    isInSelectionMode != old.isInSelectionMode ||
+    isSelected != old.isSelected ||
+    isPartiallySelected != old.isPartiallySelected ||
+    menuItems != old.menuItems;
 
   @override
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
