@@ -38,7 +38,6 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   Timer? _durationTimer;
   bool _batteryExempt = true;
   bool _notificationPermissionGranted = true;
-  bool _globalIntervalEnabled = true;
   bool _appRestartTipDismissed = false;
   bool _monitoringExplainerDismissed = false;
 
@@ -85,18 +84,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   }
 
   Future<void> _loadIntervalSetting() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (mounted) {
-      setState(() => _globalIntervalEnabled = prefs.getBool('global_interval_enabled') ?? true);
-    }
-  }
-
-  Future<void> _toggleGlobalInterval() async {
-    final newValue = !_globalIntervalEnabled;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('global_interval_enabled', newValue);
-    setState(() => _globalIntervalEnabled = newValue);
-    _refreshCallbacks[0]?.call();
+    // HomeScreen reads this itself; called here only to trigger HomeScreen refresh after settings change
   }
 
   Future<void> _checkShizuku() async {
@@ -562,31 +550,10 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                         _refreshCallbacks[0]?.call();
                       });
                     }
-                    if (v == 'toggle_interval') _toggleGlobalInterval();
                     if (v == 'backup') _backup();
                     if (v == 'restore') _restore();
                   },
                   itemBuilder: (_) => [
-                    if (_currentIndex == 0)
-                      PopupMenuItem(
-                        value: 'toggle_interval',
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('Interval checking'),
-                            IgnorePointer(
-                              child: Transform.scale(
-                                scale: 0.8,
-                                alignment: Alignment.centerRight,
-                                child: Switch(
-                                  value: _globalIntervalEnabled,
-                                  onChanged: (_) {},
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
                     const PopupMenuItem(
                         value: 'settings', child: Text('Settings')),
                     const PopupMenuItem(value: 'backup', child: Text('Backup')),

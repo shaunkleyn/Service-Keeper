@@ -74,6 +74,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const Divider(height: 1),
           _sectionHeader(context, 'Interval checking'),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 1),
+                    child: Icon(Icons.info_outline,
+                        color: theme.colorScheme.onSurfaceVariant, size: 16),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Service Keeper watches Android\'s activity log in real time. '
+                      'The moment a monitored service stops — crash, force-stop, or system kill — '
+                      'it restarts straight away without needing a scheduled check.\n\n'
+                      'Interval checking is a safety net that periodically re-checks all services '
+                      'to catch anything the live watcher may have missed '
+                      '(e.g. if Shizuku was briefly offline). It\'s optional.',
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
           SwitchListTile(
             title: const Text('Enable interval checking'),
             subtitle: Text(
