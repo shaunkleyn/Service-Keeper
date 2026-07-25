@@ -603,20 +603,26 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                 ),
                 PopupMenuButton<String>(
                   onSelected: (v) {
-                    switch (v) {
-                      case 'enable':
-                        _selectionState?.onEnableSelected();
-                      case 'disable':
-                        _selectionState?.onDisableSelected();
-                      case 'configure':
-                        _selectionState?.onConfigureSelected();
-                      case 'select_all':
-                        _selectionState?.onSelectAll();
-                      case 'invert':
-                        _selectionState?.onInvertSelection();
-                      case 'remove':
-                        _selectionState?.onRemoveSelected();
-                    }
+switch (v) {
+  case 'enable':
+    _selectionState?.onEnableSelected();
+    break;
+  case 'disable':
+    _selectionState?.onDisableSelected();
+    break;
+  case 'configure':
+    _selectionState?.onConfigureSelected();
+    break;
+  case 'select_all':
+    _selectionState?.onSelectAll();
+    break;
+  case 'invert':
+    _selectionState?.onInvertSelection();
+    break;
+  case 'remove':
+    _selectionState?.onRemoveSelected();
+    break;
+}
                   },
                   itemBuilder: (_) => [
                     const PopupMenuItem(
