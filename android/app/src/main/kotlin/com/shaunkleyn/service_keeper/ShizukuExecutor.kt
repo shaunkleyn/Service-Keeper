@@ -109,7 +109,7 @@ object ShizukuExecutor {
 
         val result = exec("am start -n $component")
         if (result == null || result.lowercase().contains("error")) return false
-        Thread.sleep(1200)
+        android.os.SystemClock.sleep(1200)
         exec("input keyevent 3")
         return true
     }
