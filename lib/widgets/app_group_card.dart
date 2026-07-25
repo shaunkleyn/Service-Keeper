@@ -331,18 +331,19 @@ class _AppGroupCardHeaderDelegate extends SliverPersistentHeaderDelegate {
       final IconData icon;
       final Color color;
 
-      switch (value) {
-        case 0:
-          icon = current == 0 ? Icons.block_outlined : Icons.check_circle;
-          color = current == 0 ? fg ?? cs.onSurfaceVariant : fg ?? Colors.green;
-          break;
-        case 1:
-          icon = current >= 1 ? Icons.visibility : Icons.visibility_off;
-          color = current >= 1 ? fg ?? Colors.green : bg ?? cs.onSurfaceVariant;
-        default:
-          icon = current >= 2 ? Icons.notifications : Icons.notifications_off;
-          color = current >= 2 ? fg ?? Colors.green : bg ?? cs.onSurfaceVariant;
-      }
+switch (value) {
+  case 0:
+    icon = current == 0 ? Icons.block_outlined : Icons.check_circle;
+    color = current == 0 ? fg ?? cs.onSurfaceVariant : fg ?? Colors.green;
+    break;
+  case 1:
+    icon = current >= 1 ? Icons.visibility : Icons.visibility_off;
+    color = current >= 1 ? fg ?? Colors.green : bg ?? cs.onSurfaceVariant;
+    break;
+  default:
+    icon = current >= 2 ? Icons.notifications : Icons.notifications_off;
+    color = current >= 2 ? fg ?? Colors.green : bg ?? cs.onSurfaceVariant;
+}
 
       return Icon(icon, size: 16, color: color);
     }
