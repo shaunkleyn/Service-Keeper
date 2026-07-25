@@ -40,6 +40,7 @@ class SystemService {
     required String serviceClass,
     required String displayLabel,
     required int intervalMinutes,
+    bool appRestartEnabled = false,
   }) async {
     try {
       await _channel.invokeMethod('scheduleMonitorWork', {
@@ -47,6 +48,7 @@ class SystemService {
         'serviceClass': serviceClass,
         'displayLabel': displayLabel,
         'intervalMinutes': intervalMinutes,
+        'appRestartEnabled': appRestartEnabled,
       });
     } on PlatformException {
       // ignore

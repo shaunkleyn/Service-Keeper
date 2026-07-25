@@ -305,6 +305,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       serviceClass: service.serviceClass,
       displayLabel: service.displayLabel,
       intervalMinutes: minutes,
+      appRestartEnabled: service.appRestartEnabled,
     );
 
     Workmanager().cancelByTag(service.workTag);

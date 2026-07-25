@@ -20,7 +20,7 @@ object ShizukuExecutor {
         if (!isReady()) return null
         return try {
             val process = ShizukuHelper.newProcess(
-                arrayOf("sh", "-c", command),
+                arrayOf("sh", "-c", "$command 2>&1"),
                 null,
                 "/"
             )
@@ -57,7 +57,7 @@ object ShizukuExecutor {
         }.toList()
     }
 
-    fun startServiceDetailed(packageName: String, serviceClass: String): StartResult {
+    fun startServiceDetailed(packageName: String, serviceClass: String, appRestartEnabled: Boolean = false): StartResult {
         val component = "$packageName/$serviceClass"
         val result = exec("am start-foreground-service -n $component")
         if (result == null || result.contains("Error", ignoreCase = true)) {
@@ -65,6 +65,11 @@ object ShizukuExecutor {
             val fallback = exec("am startservice -n $component")
             if (fallback != null && !fallback.contains("Error", ignoreCase = true)) {
                 return StartResult(true, "restart method: direct startservice")
+            }
+
+            if (appRestartEnabled) {
+                val launched = restartViaAppLaunch(packageName)
+                if (launched) return StartResult(true, "restart method: app launch")
             }
 
             val broadcast = tryBroadcastStartFallback(packageName, serviceClass)
@@ -87,6 +92,24 @@ object ShizukuExecutor {
             return StartResult(false, detail)
         }
         return StartResult(true, "restart method: direct start-foreground-service")
+    }
+
+    private fun restartViaAppLaunch(packageName: String): Boolean {
+        val resolved = exec(
+            "cmd package resolve-activity --brief " +
+                "-a android.intent.action.MAIN " +
+                "-c android.intent.category.LAUNCHER $packageName"
+        )
+        val component = resolved
+            ?.lineSequence()
+            ?.map { it.trim() }
+            ?.lastOrNull { it.contains('/') } ?: return false
+
+        val result = exec("am start -n $component")
+        if (result == null || result.lowercase().contains("error")) return false
+        Thread.sleep(1200)
+        exec("input keyevent 3")
+        return true
     }
 
     private fun tryAccessibilityToggle(packageName: String, serviceClass: String): StartResult {
@@ -132,8 +155,8 @@ object ShizukuExecutor {
         }
     }
 
-    fun startService(packageName: String, serviceClass: String): Boolean {
-        return startServiceDetailed(packageName, serviceClass).ok
+    fun startService(packageName: String, serviceClass: String, appRestartEnabled: Boolean = false): Boolean {
+        return startServiceDetailed(packageName, serviceClass, appRestartEnabled).ok
     }
 
     private fun tryBroadcastStartFallback(packageName: String, serviceClass: String): StartResult {
