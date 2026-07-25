@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:palette_generator/palette_generator.dart';
+import 'package:service_keeper/widgets/page_banner.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/app_info_service.dart';
 import '../services/database_service.dart';
@@ -13,10 +14,12 @@ import 'service_audit_screen.dart';
 
 class AccessibilityMonitorScreen extends StatefulWidget {
   final void Function(VoidCallback refresh) onRegisterRefresh;
+  final PageController? pageController;
 
   const AccessibilityMonitorScreen({
     super.key,
     required this.onRegisterRefresh,
+    this.pageController,
   });
 
   @override
@@ -277,7 +280,7 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
           packageName: packageName, serviceClass: serviceClass);
     }
   }
-
+ 
   Widget _buildDismissableBanner({
     required bool dismissed,
     required String text,
@@ -460,29 +463,44 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
 
     if (_loading) return const Center(child: CircularProgressIndicator());
 
-    return Column(
+    final pc = widget.pageController;
+    final bannersContent = Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        _buildDismissableBanner(
+        PageBanner(
+          pref: 'a11y_perm_info_dismissed',
           dismissed: _permInfoDismissed,
           text: 'The apps listed here support Accessibility Services. '
               'Before Service Keeper can monitor one, its permission must be granted in Android Settings.',
           onDismiss: () async {
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.setBool('a11y_perm_info_dismissed', true);
             if (mounted) setState(() => _permInfoDismissed = true);
           },
+          icon: Icons.lock_open,
+          color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.4),
+          textColor: Theme.of(context).colorScheme.onSecondaryContainer,
+          pageIndex: 1,
+          pageController: widget.pageController,
         ),
-        _buildDismissableBanner(
+        PageBanner(
+          pref: 'a11y_revoke_banner_dismissed',
           dismissed: _revokeBannerDismissed,
           text: 'Disabling monitoring here does not revoke the app\'s Android accessibility permission. '
               'To revoke, go to Android Settings.',
-          icon: Icons.lock_open_outlined,
           onDismiss: () async {
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.setBool('a11y_revoke_banner_dismissed', true);
             if (mounted) setState(() => _revokeBannerDismissed = true);
           },
+          icon: Icons.lock_open,
+          color: Theme.of(context).colorScheme.secondaryContainer.withValues(alpha: 0.4),
+          textColor: Theme.of(context).colorScheme.onSecondaryContainer,
+          pageIndex: 1,
+          pageController: widget.pageController,
         ),
+      ],
+    );
+
+    return Column(
+      children: [
+          bannersContent,
         Expanded(
           child: pkgs.isEmpty
               ? const Center(child: Text('No third-party accessibility services found.'))

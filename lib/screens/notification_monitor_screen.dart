@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:palette_generator/palette_generator.dart';
+import 'package:service_keeper/widgets/page_banner.dart';
+import 'package:service_keeper/widgets/page_animated.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/app_info_service.dart';
 import '../services/database_service.dart';
@@ -13,10 +15,12 @@ import 'service_audit_screen.dart';
 
 class NotificationMonitorScreen extends StatefulWidget {
   final void Function(VoidCallback refresh) onRegisterRefresh;
+  final PageController? pageController;
 
   const NotificationMonitorScreen({
     super.key,
     required this.onRegisterRefresh,
+    this.pageController,
   });
 
   @override
@@ -461,28 +465,36 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
 
     if (_loading) return const Center(child: CircularProgressIndicator());
 
+
     return Column(
       children: [
-        _buildDismissableBanner(
+        PageBanner(
+          pref: 'notif_perm_info_dismissed',
           dismissed: _permInfoDismissed,
           text: 'The apps listed here support Notification Listeners. '
               'Before Service Keeper can monitor one, its permission must be granted in Android Settings.',
           onDismiss: () async {
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.setBool('notif_perm_info_dismissed', true);
             if (mounted) setState(() => _permInfoDismissed = true);
           },
+          icon: Icons.open_in_browser_outlined,
+          color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.4),
+          textColor: Theme.of(context).colorScheme.onSecondaryContainer,
+          pageIndex: 2,
+          pageController: widget.pageController,
         ),
-        _buildDismissableBanner(
+        PageBanner(
+          pref: 'notif_revoke_banner_dismissed',
           dismissed: _revokeBannerDismissed,
           text: 'Disabling monitoring here does not revoke the app\'s Android notification listener permission. '
               'To revoke, go to Android Settings.',
-          icon: Icons.lock_open_outlined,
+          icon: Icons.info,
           onDismiss: () async {
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.setBool('notif_revoke_banner_dismissed', true);
             if (mounted) setState(() => _revokeBannerDismissed = true);
           },
+          color: Theme.of(context).colorScheme.tertiaryContainer.withValues(alpha: 0.45),
+          textColor: Theme.of(context).colorScheme.onTertiaryContainer,
+          pageIndex: 2,
+          pageController: widget.pageController,
         ),
         Expanded(
           child: pkgs.isEmpty

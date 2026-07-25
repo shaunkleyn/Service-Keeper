@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:service_keeper/widgets/page_banner.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/audit_event.dart';
@@ -214,66 +215,49 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   }
 
   Widget _buildMonitoringExplainerBanner() {
-    if (_monitoringExplainerDismissed || _currentIndex != 0) return const SizedBox.shrink();
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      color: cs.primaryContainer.withValues(alpha: 0.4),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 1),
-          child: Icon(Icons.info_outline, size: 14, color: cs.onPrimaryContainer),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
+    return PageBanner(
+      pref: 'monitoring_explainer_dismissed',
+      dismissed: _monitoringExplainerDismissed,
+      text:
             'Service Keeper runs a persistent background watcher that reads Android\'s activity log in real time. '
-            'The moment a monitored service stops — crash, force-stop, or system kill — '
-            'Service Keeper detects it and restarts it straight away. '
+          'The moment a monitored service stops Service Keeper detects it and restarts it straight away. '
             'Interval checking is a safety net: it periodically re-checks all services to catch '
             'anything the live watcher may have missed (e.g. if Shizuku was briefly offline). '
             'It\'s optional, but useful as a backup.',
-            style: TextStyle(fontSize: 12, color: cs.onPrimaryContainer),
-          ),
-        ),
-        const SizedBox(width: 8),
-        GestureDetector(
-          onTap: () async {
+      onDismiss: () async {
             final prefs = await SharedPreferences.getInstance();
             await prefs.setBool('monitoring_explainer_dismissed', true);
             if (mounted) setState(() => _monitoringExplainerDismissed = true);
           },
-          child: Icon(Icons.close, size: 16, color: cs.onPrimaryContainer),
-        ),
-      ]),
+      icon: Icons.info,
+      color:
+          Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.4),
+      textColor: Theme.of(context).colorScheme.onPrimaryContainer,
+      iconColor: Theme.of(context).colorScheme.onPrimaryContainer,
+      pageIndex: 0,
+      pageController: _pageController,
     );
   }
 
   Widget _buildAppRestartTipBanner() {
-    if (_appRestartTipDismissed || _currentIndex != 0) return const SizedBox.shrink();
     final cs = Theme.of(context).colorScheme;
-    return Container(
-      color: cs.tertiaryContainer.withValues(alpha: 0.45),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Row(children: [
-        Icon(Icons.open_in_browser_outlined, size: 16, color: cs.onTertiaryContainer),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            "Tip: If a service can't be started directly, enable \"Restart whole app\" in its Configure menu to launch the app instead.",
-            style: TextStyle(fontSize: 12, color: cs.onTertiaryContainer),
-          ),
-        ),
-        const SizedBox(width: 8),
-        GestureDetector(
-          onTap: () async {
+    return PageBanner(
+      pref: 'app_restart_tip_dismissed',
+      dismissed: _appRestartTipDismissed,
+      text: "Tip: If a service can't be started directly, enable \"Restart whole app\" in its Configure menu to launch the app instead.",
+
+      onDismiss: () async {
             final prefs = await SharedPreferences.getInstance();
             await prefs.setBool('app_restart_tip_dismissed', true);
             if (mounted) setState(() => _appRestartTipDismissed = true);
           },
-          child: Icon(Icons.close, size: 16, color: cs.onTertiaryContainer),
-        ),
-      ]),
+      icon: Icons.open_in_browser_outlined,
+      color:
+          cs.tertiaryContainer.withValues(alpha: 0.45),
+      textColor: cs.onTertiaryContainer,
+      iconColor: cs.onTertiaryContainer,
+      pageIndex: 0,
+      pageController: _pageController,
     );
   }
 
@@ -610,11 +594,13 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                 _KeepAlive(
                   child: AccessibilityMonitorScreen(
                     onRegisterRefresh: (cb) => _refreshCallbacks[1] = cb,
+                    pageController: _pageController,
                   ),
                 ),
                 _KeepAlive(
                   child: NotificationMonitorScreen(
                     onRegisterRefresh: (cb) => _refreshCallbacks[2] = cb,
+                    pageController: _pageController,
                   ),
                 ),
               ],
