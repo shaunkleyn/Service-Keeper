@@ -13,8 +13,7 @@ Color? iconColor,
 int pageIndex = 0,
 PageController? pageController}) {
     if (dismissed) return const SizedBox.shrink();
-    return PageAnimated( 
-            Container(
+    final banner = Container(
       color: color ?? Colors.black87.withAlpha(102),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -36,8 +35,9 @@ PageController? pageController}) {
           child: Icon(Icons.close, size: 16, color: iconColor ?? textColor ?? Colors.black87),
         ),
       ]),
-    ),
-    pageIndex, pageController ?? PageController());
+    );
+    if (pageController == null) return banner;
+    return PageAnimated(banner, pageIndex, pageController);
   }
 
   
