@@ -85,6 +85,7 @@ class MonitorWorker(context: Context, params: WorkerParameters) :
                     val appName = obj.optString("appName", label)
                     val interval = obj.optInt("intervalMinutes", 15).toLong()
                     val tag = "${pkg}_${cls.replace('.', '_')}"
+                    val appRestartEnabled = obj.optBoolean("appRestartEnabled", false)
                     val data = Data.Builder()
                         .putString("packageName", pkg)
                         .putString("serviceClass", cls)
@@ -92,6 +93,7 @@ class MonitorWorker(context: Context, params: WorkerParameters) :
                         .putString("appName", appName)
                         .putLong("intervalMinutes", interval)
                         .putBoolean("selfChain", interval < 15)
+                        .putBoolean("appRestartEnabled", appRestartEnabled)
                         .build()
 
                     if (interval >= 15) {
@@ -111,6 +113,7 @@ class MonitorWorker(context: Context, params: WorkerParameters) :
         val appName = inputData.getString("appName") ?: label
         val selfChain = inputData.getBoolean("selfChain", false)
         val intervalMinutes = inputData.getLong("intervalMinutes", 15L)
+        val appRestartEnabled = inputData.getBoolean("appRestartEnabled", false)
 
         if (!ShizukuExecutor.isReady()) return Result.retry()
 
@@ -118,7 +121,7 @@ class MonitorWorker(context: Context, params: WorkerParameters) :
         if (!running) {
             appendAuditEvent(pkg, cls, label, "DETECTED_STOPPED", "AUTOMATIC", null)
             appendAuditEvent(pkg, cls, label, "RESTART_ATTEMPTED", "AUTOMATIC", null)
-            val start = ShizukuExecutor.startServiceDetailed(pkg, cls)
+            val start = ShizukuExecutor.startServiceDetailed(pkg, cls, appRestartEnabled)
             if (start.ok) {
                 appendAuditEvent(pkg, cls, label, "RESTART_SUCCESS", "AUTOMATIC", start.detail)
                 if (notificationsEnabledFor(pkg, cls)) {

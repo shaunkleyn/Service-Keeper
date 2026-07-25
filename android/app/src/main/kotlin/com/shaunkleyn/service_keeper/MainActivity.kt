@@ -134,6 +134,7 @@ class MainActivity : FlutterActivity() {
                     val cls = call.argument<String>("serviceClass")
                     val label = call.argument<String>("displayLabel")
                     val interval = call.argument<Int>("intervalMinutes") ?: 15
+                    val appRestartEnabled = call.argument<Boolean>("appRestartEnabled") ?: false
                     if (pkg == null || cls == null || label == null) {
                         result.error("INVALID_ARGS", "packageName/serviceClass/displayLabel required", null)
                         return@setMethodCallHandler
@@ -146,6 +147,7 @@ class MainActivity : FlutterActivity() {
                         .putString("displayLabel", label)
                         .putLong("intervalMinutes", interval.toLong())
                         .putBoolean("selfChain", interval < 15)
+                        .putBoolean("appRestartEnabled", appRestartEnabled)
                         .build()
 
                     if (interval >= 15) {
@@ -193,6 +195,7 @@ class MainActivity : FlutterActivity() {
                                 .putString("displayLabel", label)
                                 .putLong("intervalMinutes", obj.optInt("intervalMinutes", 15).toLong())
                                 .putBoolean("selfChain", false)
+                                .putBoolean("appRestartEnabled", obj.optBoolean("appRestartEnabled", false))
                                 .build()
 
                             MonitorWorker.runNow(applicationContext, tag, data)

@@ -13,6 +13,7 @@ class ServiceTile extends StatefulWidget {
   final VoidCallback? onViewHistory;
   final VoidCallback? onCheckDue;
   final VoidCallback? onToggleNotifications;
+  final VoidCallback? onReportIssue;
   final Color? accentColor;
   final bool showLeading;
   final bool globalIntervalEnabled;
@@ -30,6 +31,7 @@ class ServiceTile extends StatefulWidget {
     this.onViewHistory,
     this.onCheckDue,
     this.onToggleNotifications,
+    this.onReportIssue,
     this.accentColor,
     this.showLeading = true,
     this.globalIntervalEnabled = true,
@@ -348,6 +350,7 @@ class _ServiceTileState extends State<ServiceTile> with WidgetsBindingObserver {
                       if (v == 'restart') widget.onRestartNow?.call();
                       if (v == 'history') widget.onViewHistory?.call();
                       if (v == 'toggle_notifications') widget.onToggleNotifications?.call();
+                      if (v == 'report_issue') widget.onReportIssue?.call();
                       if (v == 'remove') widget.onRemove?.call();
                     },
                     itemBuilder: (_) => [
@@ -370,6 +373,17 @@ class _ServiceTileState extends State<ServiceTile> with WidgetsBindingObserver {
                                 ),
                               ),
                             ),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuDivider(),
+                      const PopupMenuItem(
+                        value: 'report_issue',
+                        child: Row(
+                          children: [
+                            Icon(Icons.bug_report_outlined, size: 16),
+                            SizedBox(width: 8),
+                            Text('Report Issue'),
                           ],
                         ),
                       ),
