@@ -69,7 +69,9 @@ object ShizukuExecutor {
 
             if (appRestartEnabled) {
                 val launched = restartViaAppLaunch(packageName)
-                if (launched) return StartResult(true, "restart method: app launch")
+                if (launched && isServiceRunning(packageName, serviceClass)) {
+                    return StartResult(true, "restart method: app launch")
+                }
             }
 
             val broadcast = tryBroadcastStartFallback(packageName, serviceClass)
@@ -107,7 +109,7 @@ object ShizukuExecutor {
 
         val result = exec("am start -n $component")
         if (result == null || result.lowercase().contains("error")) return false
-        Thread.sleep(1200)
+        android.os.SystemClock.sleep(1200)
         exec("input keyevent 3")
         return true
     }
