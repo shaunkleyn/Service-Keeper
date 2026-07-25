@@ -12,6 +12,7 @@ import '../services/shizuku_service.dart';
 import '../services/storage_service.dart';
 import '../services/app_info_service.dart';
 import '../services/database_service.dart';
+import '../services/diagnostics_service.dart';
 import '../services/system_service.dart';
 import '../widgets/service_tile.dart';
 import 'service_picker_screen.dart';
@@ -713,6 +714,83 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _reportServiceIssue(
+      MonitoredService service, String appName) async {
+    if (!mounted) return;
+    final diag = DiagnosticsService(_shizuku, _db);
+    var loadingOpen = true;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Row(children: [
+          CircularProgressIndicator(),
+          SizedBox(width: 16),
+          Text('Gathering diagnostics…'),
+        ]),
+      ),
+    );
+    try {
+      final body = await diag.buildServiceReport(service, appName);
+      if (!mounted) return;
+      if (loadingOpen) {
+        Navigator.of(context, rootNavigator: true).pop();
+        loadingOpen = false;
+      }
+      final title =
+          'Service not kept alive: ${service.displayLabel} (${service.packageName})';
+      await DiagnosticsService.openGitHubIssue(context, title: title, body: body);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to generate diagnostics: $e')),
+        );
+      }
+    } finally {
+      if (mounted && loadingOpen) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    }
+  }
+
+  Future<void> _reportAppIssue(
+      String pkg, String appName, List<MonitoredService> services) async {
+    if (!mounted) return;
+    final diag = DiagnosticsService(_shizuku, _db);
+    var loadingOpen = true;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Row(children: [
+          CircularProgressIndicator(),
+          SizedBox(width: 16),
+          Text('Gathering diagnostics…'),
+        ]),
+      ),
+    );
+    try {
+      final body = await diag.buildAppReport(pkg, appName, services);
+      if (!mounted) return;
+      if (loadingOpen) {
+        Navigator.of(context, rootNavigator: true).pop();
+        loadingOpen = false;
+      }
+      final title = 'Services not kept alive: $appName ($pkg)';
+      await DiagnosticsService.openGitHubIssue(context, title: title, body: body);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to generate diagnostics: $e')),
+        );
+      }
+    } finally {
+      if (mounted && loadingOpen) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    }
+  }
+
   void _viewAppHistory(String packageName, String appName) {
     Navigator.push(
       context,
@@ -843,6 +921,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             await _setAppInterval(services, result == -1 ? null : result);
                           }
                         : null,
+                    onReportIssue: () =>
+                        _reportAppIssue(pkg, appName, services),
                   ),
                 ),
                 if (_expandedGroups[pkg] == true)
@@ -895,6 +975,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                         builder: (_) => ServiceAuditScreen(service: s),
                                       ),
                                     ),
+                                    onReportIssue: () =>
+                                        _reportServiceIssue(s, appName),
                                   ),
                                   if (!isLast)
                                     Divider(
@@ -963,6 +1045,7 @@ class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
   final bool notificationsEnabled;
   final VoidCallback onAddServices;
   final VoidCallback? onSetInterval;
+  final VoidCallback? onReportIssue;
 
   const _GroupHeaderDelegate({
     required this.packageName,
@@ -980,6 +1063,7 @@ class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.notificationsEnabled,
     required this.onAddServices,
     this.onSetInterval,
+    this.onReportIssue,
   });
 
   @override
@@ -1095,6 +1179,7 @@ class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
                         if (v == 'view_history') onViewHistory();
                         if (v == 'toggle_notifications') onToggleNotifications();
                         if (v == 'set_interval') onSetInterval?.call();
+                        if (v == 'report_issue') onReportIssue?.call();
                       },
                       itemBuilder: (_) => [
                         const PopupMenuItem(value: 'add_services', child: Text('Add services')),
@@ -1118,6 +1203,17 @@ class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
                                   child: Switch(value: notificationsEnabled, onChanged: (_) {}),
                                 ),
                               ),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuDivider(),
+                        const PopupMenuItem(
+                          value: 'report_issue',
+                          child: Row(
+                            children: [
+                              Icon(Icons.bug_report_outlined, size: 16),
+                              SizedBox(width: 8),
+                              Text('Report Issue'),
                             ],
                           ),
                         ),
@@ -1148,7 +1244,8 @@ class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
       old.globalIntervalEnabled != globalIntervalEnabled ||
       old.globalIntervalMinutes != globalIntervalMinutes ||
       old.onAddServices != onAddServices ||
-      old.onSetInterval != onSetInterval;
+      old.onSetInterval != onSetInterval ||
+      old.onReportIssue != onReportIssue;
 }
 
 class _AppIconWithRings extends StatefulWidget {

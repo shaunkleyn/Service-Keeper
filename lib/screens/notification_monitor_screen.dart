@@ -4,6 +4,9 @@ import 'package:flutter/services.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/app_info_service.dart';
+import '../services/database_service.dart';
+import '../services/diagnostics_service.dart';
+import '../services/shizuku_service.dart';
 import '../services/storage_service.dart';
 import '../services/system_service.dart';
 import 'service_audit_screen.dart';
@@ -23,6 +26,8 @@ class NotificationMonitorScreen extends StatefulWidget {
 class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
     with WidgetsBindingObserver {
   final _appInfo = AppInfoService();
+  final _db = DatabaseService();
+  final _shizuku = ShizukuService();
   final _storage = StorageService();
   final _system = SystemService();
 
@@ -237,6 +242,117 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
     }
   }
 
+  Future<void> _reportServiceIssue(
+    String packageName,
+    String appName,
+    String serviceClass,
+  ) async {
+    if (!mounted) return;
+    final diag = DiagnosticsService(_shizuku, _db);
+    var loadingOpen = true;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Row(children: [
+          CircularProgressIndicator(),
+          SizedBox(width: 16),
+          Text('Gathering diagnostics...'),
+        ]),
+      ),
+    );
+
+    try {
+      final key = '$packageName/$serviceClass';
+      final body = await diag.buildExternalServiceReport(
+        reportType: 'Notification Listener',
+        packageName: packageName,
+        appName: appName,
+        serviceClass: serviceClass,
+        isMonitored: _monitoredKeys.contains(key),
+        isEnabled: _enabledKeys.contains(key),
+        notificationsEnabled: !_notifOffKeys.contains(key),
+      );
+      if (!mounted) return;
+      if (loadingOpen) {
+        Navigator.of(context, rootNavigator: true).pop();
+        loadingOpen = false;
+      }
+      final label = serviceClass.split('.').last;
+      final title = 'Notification listener issue: $label ($packageName)';
+      await DiagnosticsService.openGitHubIssue(context, title: title, body: body);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to generate diagnostics: $e')),
+        );
+      }
+    } finally {
+      if (mounted && loadingOpen) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    }
+  }
+
+  Future<void> _reportAppIssue(
+    String packageName,
+    String appName,
+    List<({String serviceClass, String appName})> services,
+  ) async {
+    if (!mounted) return;
+    final diag = DiagnosticsService(_shizuku, _db);
+    var loadingOpen = true;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Row(children: [
+          CircularProgressIndicator(),
+          SizedBox(width: 16),
+          Text('Gathering diagnostics...'),
+        ]),
+      ),
+    );
+
+    try {
+      final snapshots = services.map((svc) {
+        final key = '$packageName/${svc.serviceClass}';
+        return DiagnosticsReportService(
+          displayLabel: svc.serviceClass.split('.').last,
+          serviceClass: svc.serviceClass,
+          isMonitored: _monitoredKeys.contains(key),
+          isEnabled: _enabledKeys.contains(key),
+          notificationsEnabled: !_notifOffKeys.contains(key),
+        );
+      }).toList();
+
+      final body = await diag.buildExternalAppReport(
+        reportType: 'Notification Listeners',
+        packageName: packageName,
+        appName: appName,
+        services: snapshots,
+      );
+
+      if (!mounted) return;
+      if (loadingOpen) {
+        Navigator.of(context, rootNavigator: true).pop();
+        loadingOpen = false;
+      }
+      final title = 'Notification listeners issue: $appName ($packageName)';
+      await DiagnosticsService.openGitHubIssue(context, title: title, body: body);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to generate diagnostics: $e')),
+        );
+      }
+    } finally {
+      if (mounted && loadingOpen) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    }
+  }
+
   Map<String, List<({String serviceClass, String appName})>> _grouped() {
     final groups = <String, List<({String serviceClass, String appName})>>{};
     for (final s in _notifServices) {
@@ -317,6 +433,8 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
                                       ),
                                     ),
                                   ),
+                                  onReportIssue: () =>
+                                      _reportAppIssue(pkg, groups[pkg]!.first.appName, groups[pkg]!),
                                 ),
                               ),
                               if (_expandedGroups[pkg] == true)
@@ -417,14 +535,30 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
                                                             ),
                                                           );
                                                         }
+                                                        if (v == 'report_issue') {
+                                                          _reportServiceIssue(
+                                                            pkg,
+                                                            svc.appName,
+                                                            svc.serviceClass,
+                                                          );
+                                                        }
                                                       },
-                                                      itemBuilder: (_) => const [
-                                                        PopupMenuItem(
+                                                      itemBuilder: (_) => [
+                                                        const PopupMenuItem(
                                                           value: 'history',
                                                           child: Row(children: [
                                                             Icon(Icons.history, size: 18),
                                                             SizedBox(width: 8),
                                                             Text('History'),
+                                                          ]),
+                                                        ),
+                                                        const PopupMenuDivider(),
+                                                        const PopupMenuItem(
+                                                          value: 'report_issue',
+                                                          child: Row(children: [
+                                                            Icon(Icons.bug_report_outlined, size: 18),
+                                                            SizedBox(width: 8),
+                                                            Text('Report Issue'),
                                                           ]),
                                                         ),
                                                       ],
@@ -473,6 +607,7 @@ class _NotifGroupHeaderDelegate extends SliverPersistentHeaderDelegate {
   final VoidCallback onToggleAll;
   final VoidCallback onToggleNotif;
   final VoidCallback onOpenHistory;
+  final VoidCallback onReportIssue;
 
   const _NotifGroupHeaderDelegate({
     required this.packageName,
@@ -488,6 +623,7 @@ class _NotifGroupHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.onToggleAll,
     required this.onToggleNotif,
     required this.onOpenHistory,
+    required this.onReportIssue,
   });
 
   @override
@@ -631,6 +767,8 @@ class _NotifGroupHeaderDelegate extends SliverPersistentHeaderDelegate {
                             ));
                           } else if (v == 'history') {
                             onOpenHistory();
+                          } else if (v == 'report_issue') {
+                            onReportIssue();
                           }
                         },
                         itemBuilder: (_) => [
@@ -658,6 +796,15 @@ class _NotifGroupHeaderDelegate extends SliverPersistentHeaderDelegate {
                               Text('History'),
                             ]),
                           ),
+                          const PopupMenuDivider(),
+                          const PopupMenuItem(
+                            value: 'report_issue',
+                            child: Row(children: [
+                              Icon(Icons.bug_report_outlined, size: 18),
+                              SizedBox(width: 8),
+                              Text('Report Issue'),
+                            ]),
+                          ),
                         ],
                       ),
                       AnimatedRotation(
@@ -682,7 +829,8 @@ class _NotifGroupHeaderDelegate extends SliverPersistentHeaderDelegate {
       old.enabledKeys != enabledKeys ||
       old.notifOffKeys != notifOffKeys ||
       old.appColor != appColor ||
-      old.iconBytes != iconBytes;
+      old.iconBytes != iconBytes ||
+      old.onReportIssue != onReportIssue;
 }
 
 class _StatusChip extends StatelessWidget {
