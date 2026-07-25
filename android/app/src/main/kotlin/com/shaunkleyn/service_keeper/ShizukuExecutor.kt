@@ -69,7 +69,9 @@ object ShizukuExecutor {
 
             if (appRestartEnabled) {
                 val launched = restartViaAppLaunch(packageName)
-                if (launched) return StartResult(true, "restart method: app launch")
+                if (launched && isServiceRunning(packageName, serviceClass)) {
+                    return StartResult(true, "restart method: app launch")
+                }
             }
 
             val broadcast = tryBroadcastStartFallback(packageName, serviceClass)
