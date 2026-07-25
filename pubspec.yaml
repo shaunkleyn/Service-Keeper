@@ -51,7 +51,7 @@ dependencies:
   cupertino_icons: ^1.0.2
   animated_toggle_switch: ^0.8.7
   flex_color_scheme: ^8.4.0
-  google_fonts: ^8.2.0
+  google_fonts: ^6.2.1
 
 dev_dependencies:
   flutter_test:

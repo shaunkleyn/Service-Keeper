@@ -1,8 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter/services.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -90,7 +88,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _loading = true;
   final _expandedGroups = <String, bool>{};
   final _restartingServices = <String>{};
-  final _screenshotKey = GlobalKey();
   final _selectedServices = <String>{};
   bool get _isInSelectionMode => _selectedServices.isNotEmpty;
 
@@ -985,18 +982,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _loadServices();
   }
 
-  Future<Uint8List?> _captureScreen() async {
-    try {
-      final boundary =
-          _screenshotKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-      if (boundary == null) return null;
-      final image = await boundary.toImage(pixelRatio: 2.0);
-      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      return byteData?.buffer.asUint8List();
-    } catch (_) {
-      return null;
-    }
-  }
 
   Future<void> _reportServiceIssue(
       MonitoredService service, String appName) async {
@@ -1185,9 +1170,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_services.isEmpty) return _buildEmptyState();
-    return RepaintBoundary(
-      key: _screenshotKey,
-      child: RefreshIndicator(
+    return RefreshIndicator(
         onRefresh: _refreshStatuses,
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -1197,7 +1180,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             const SliverToBoxAdapter(child: SizedBox(height: 80)),
           ],
         ),
-      ),
     );
   }
 
