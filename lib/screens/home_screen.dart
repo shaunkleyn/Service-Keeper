@@ -169,18 +169,38 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     }
   }
-
+ 
   Future<void> _log(MonitoredService s, AuditEventType type, AuditTrigger trigger,
-          {String? notes}) =>
-      _db.addEvent(AuditEvent(
-        timestamp: DateTime.now(),
-        packageName: s.packageName,
-        serviceClass: s.serviceClass,
-        displayLabel: s.displayLabel,
-        eventType: type,
-        trigger: trigger,
-        notes: notes,
-      ));
+      {String? notes}) {
+    final siblings =
+        _services.where((svc) => svc.packageName == s.packageName).toList();
+    String? snapshot;
+    if (siblings.length > 1) {
+      snapshot = siblings.map((svc) {
+        final marker = svc.serviceClass == s.serviceClass ? '▶' : '·';
+        final stateLabel = switch (svc.state) {
+          ServiceState.running => 'Running',
+          ServiceState.crashed => 'Not running',
+          ServiceState.stopped => 'Disabled',
+          ServiceState.unknown => 'Unknown',
+        };
+        return '$marker ${svc.displayLabel}: $stateLabel';
+      }).join('\n');
+    }
+    final combined = [
+      if (notes != null && notes.isNotEmpty) notes,
+      if (snapshot != null) snapshot,
+    ].join('\n');
+    return _db.addEvent(AuditEvent(
+      timestamp: DateTime.now(),
+      packageName: s.packageName,
+      serviceClass: s.serviceClass,
+      displayLabel: s.displayLabel,
+      eventType: type,
+      trigger: trigger,
+      notes: combined.isEmpty ? null : combined,
+    ));
+  }
 
   Future<void> _loadServices() async {
     final list = await _storage.loadServices();
@@ -1421,7 +1441,7 @@ class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
   @override
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
     final theme = Theme.of(context);
-    final anyIssue = services.any((s) => s.wasRunning == false && s.enabled);
+    final anyIssue = services.any((s) => s.state == ServiceState.crashed);
     final allEnabled = services.every((s) => s.enabled);
 
     final Color? headerFg = appColor == null

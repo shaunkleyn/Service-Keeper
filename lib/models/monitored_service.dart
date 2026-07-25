@@ -1,5 +1,12 @@
 import 'dart:convert';
 
+enum ServiceState {
+  unknown,  // never checked
+  running,  // confirmed running
+  crashed,  // was running, now unexpectedly not running (monitoring enabled)
+  stopped,  // not running because monitoring is disabled
+}
+
 class MonitoredService {
   final String packageName;
   final String serviceClass;
@@ -33,6 +40,13 @@ class MonitoredService {
   String get workTag => '${packageName}_${serviceClass.replaceAll('.', '_')}';
 
   String get fullServiceName => '$packageName/$serviceClass';
+
+  ServiceState get state {
+    if (wasRunning == null) return ServiceState.unknown;
+    if (wasRunning!) return ServiceState.running;
+    if (!enabled) return ServiceState.stopped;
+    return ServiceState.crashed;
+  }
 
   // Sentinel used to distinguish "pass null explicitly" from "don't change"
   static const _keep = Object();

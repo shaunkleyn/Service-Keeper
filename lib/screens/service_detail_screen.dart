@@ -130,7 +130,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
               'When the service fails to start directly (e.g. it\'s a JobIntentService), '
               'Service Keeper will launch the app instead. '
               'The app will be minimised immediately after.',
-              style: theme.textTheme.bodySmall
+              style: theme.textTheme.bodySmall 
                   ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
             value: _appRestartEnabled,
