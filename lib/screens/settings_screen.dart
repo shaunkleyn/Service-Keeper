@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../app_settings_notifier.dart';
+import '../services/app_info_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -10,6 +12,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _useAppColors = false;
+  bool _useMaterialYou = false;
   bool _globalIntervalEnabled = true;
   int _defaultInterval = 15;
 
@@ -33,6 +36,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _useAppColors = prefs.getBool('use_app_colors') ?? false;
+      _useMaterialYou = prefs.getBool('use_material_you') ?? false;
       _globalIntervalEnabled = prefs.getBool('global_interval_enabled') ?? true;
       _defaultInterval = prefs.getInt('default_check_interval') ?? 15;
     });
@@ -44,10 +48,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() => _useAppColors = value);
   }
 
+  Future<void> _setMaterialYou(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('use_material_you', value);
+    if (value) {
+      wallpaperSeedNotifier.value = await AppInfoService.getWallpaperSeedColor();
+    } else {
+      wallpaperSeedNotifier.value = null;
+    }
+    materialYouNotifier.value = value;
+    setState(() => _useMaterialYou = value);
+  }
+
   Future<void> _setGlobalIntervalEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('global_interval_enabled', value);
     setState(() => _globalIntervalEnabled = value);
+  }
+
+  Future<void> _resetBanners() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reset banners?'),
+        content: const Text(
+          'All dismissed tips and info banners will be shown again throughout the app, '
+          'as if it was just installed.',
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true), child: const Text('Reset')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final prefs = await SharedPreferences.getInstance();
+    for (final key in const [
+      'app_restart_tip_dismissed',
+      'monitoring_explainer_dismissed',
+      'toggle_explainer_dismissed',
+      'a11y_perm_info_dismissed',
+      'a11y_revoke_banner_dismissed',
+      'notif_perm_info_dismissed',
+      'notif_revoke_banner_dismissed',
+    ]) {
+      await prefs.remove(key);
+    }
+    if (mounted) Navigator.pop(context, true);
   }
 
   Future<void> _setDefaultInterval(int minutes) async {
@@ -72,8 +121,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: _useAppColors,
             onChanged: _setAppColors,
           ),
+          // DynamicColorBuilder(
+          //   builder: (lightDynamic, darkDynamic) {
+          //     final nativeAvailable = lightDynamic != null && darkDynamic != null;
+          //     return SwitchListTile(
+          //       title: const Text('Material You theme'),
+          //       subtitle: Text(
+          //         nativeAvailable
+          //             ? 'Uses colors from your wallpaper.'
+          //             : 'Uses your wallpaper\'s primary color as the theme seed (Android 8.1+).',
+          //       ),
+          //       value: _useMaterialYou,
+          //       onChanged: _setMaterialYou,
+          //     );
+          //   },
+          // ),
           const Divider(height: 1),
           _sectionHeader(context, 'Interval checking'),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 1),
+                    child: Icon(Icons.info_outline,
+                        color: theme.colorScheme.onSurfaceVariant, size: 16),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Service Keeper watches Android\'s activity log in real time. '
+                      'The moment a monitored service stops — crash, force-stop, or system kill — '
+                      'it restarts straight away without needing a scheduled check.\n\n'
+                      'Interval checking is a safety net that periodically re-checks all services '
+                      'to catch anything the live watcher may have missed '
+                      '(e.g. if Shizuku was briefly offline). It\'s optional.',
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
           SwitchListTile(
             title: const Text('Enable interval checking'),
             subtitle: Text(
@@ -185,6 +282,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ),
+          const Divider(height: 1),
+          _sectionHeader(context, 'Banners'),
+          ListTile(
+            leading: Icon(Icons.info_outline,
+                color: theme.colorScheme.onSurfaceVariant),
+            title: const Text('Reset dismissed banners'),
+            subtitle: const Text(
+              'Shows all tips and info banners again throughout the app, '
+              'as if it was just installed.',
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _resetBanners,
+          ),
         ],
       ),
     );

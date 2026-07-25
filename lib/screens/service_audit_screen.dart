@@ -191,6 +191,10 @@ class _ServiceAuditScreenState extends State<ServiceAuditScreen> {
         AuditEventType.removed => (Icons.remove_circle_outline, Colors.red),
         AuditEventType.enabled => (Icons.toggle_on_outlined, Colors.green),
         AuditEventType.disabled => (Icons.toggle_off_outlined, Colors.grey),
+        AuditEventType.notificationsEnabled => (Icons.notifications_active_outlined, Colors.green),
+        AuditEventType.notificationsDisabled => (Icons.notifications_off_outlined, Colors.grey),
+        AuditEventType.intervalChanged => (Icons.schedule_outlined, Colors.blue),
+        AuditEventType.configChanged => (Icons.tune_outlined, Colors.purple),
       };
 
   String _formatTs(DateTime dt) {

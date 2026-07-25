@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:service_keeper/widgets/page_banner.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/audit_event.dart';
@@ -38,12 +39,37 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   Timer? _durationTimer;
   bool _batteryExempt = true;
   bool _notificationPermissionGranted = true;
-  bool _globalIntervalEnabled = true;
+  bool _appRestartTipDismissed = false;
+  bool _monitoringExplainerDismissed = false;
+  bool _toggleExplainerDismissed = false;
 
   final _refreshCallbacks = <int, VoidCallback>{};
   VoidCallback? _runMonitorNow;
   VoidCallback? _checkStatuses;
   VoidCallback? _addService;
+  SelectionState? _selectionState;
+  String? _undoLabel;
+  VoidCallback? _undoAction;
+  Timer? _undoTimer;
+
+  void _registerUndo(String? label, VoidCallback? action) {
+    _undoTimer?.cancel();
+    _undoTimer = null;
+    setState(() {
+      _undoLabel = label;
+      _undoAction = action;
+    });
+    if (action != null) {
+      _undoTimer = Timer(const Duration(seconds: 10), () {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        setState(() {
+          _undoLabel = null;
+          _undoAction = null;
+        });
+      });
+    }
+  }
 
   @override
   void initState() {
@@ -55,6 +81,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   @override
   void dispose() {
     _durationTimer?.cancel();
+    _undoTimer?.cancel();
     _pageController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -74,21 +101,25 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     await _checkBatteryOptimization();
     await _checkNotificationPermission();
     await _loadIntervalSetting();
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) setState(() {
+      _appRestartTipDismissed = prefs.getBool('app_restart_tip_dismissed') ?? false;
+      _monitoringExplainerDismissed = prefs.getBool('monitoring_explainer_dismissed') ?? false;
+      _toggleExplainerDismissed = prefs.getBool('toggle_explainer_dismissed') ?? false;
+    });
   }
 
   Future<void> _loadIntervalSetting() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (mounted) {
-      setState(() => _globalIntervalEnabled = prefs.getBool('global_interval_enabled') ?? true);
-    }
+    // HomeScreen reads this itself; called here only to trigger HomeScreen refresh after settings change
   }
 
-  Future<void> _toggleGlobalInterval() async {
-    final newValue = !_globalIntervalEnabled;
+  Future<void> _reloadBannerStates() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('global_interval_enabled', newValue);
-    setState(() => _globalIntervalEnabled = newValue);
-    _refreshCallbacks[0]?.call();
+    if (mounted) setState(() {
+      _appRestartTipDismissed = prefs.getBool('app_restart_tip_dismissed') ?? false;
+      _monitoringExplainerDismissed = prefs.getBool('monitoring_explainer_dismissed') ?? false;
+      _toggleExplainerDismissed = prefs.getBool('toggle_explainer_dismissed') ?? false;
+    });
   }
 
   Future<void> _checkShizuku() async {
@@ -150,6 +181,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     final since = _shizukuReadySince;
     if (since == null) return '';
     final d = DateTime.now().difference(since);
+    if (d.inDays > 0) return '${d.inDays}d ${d.inHours.remainder(24)}h ${d.inMinutes.remainder(60)}m';
     if (d.inHours > 0) return '${d.inHours}h ${d.inMinutes.remainder(60)}m';
     if (d.inMinutes > 0) return '${d.inMinutes}m';
     return 'just now';
@@ -204,6 +236,155 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           ),
           Text('Tap to fix →', style: TextStyle(color: Colors.deepOrange, fontSize: 12)),
         ]),
+      ),
+    );
+  }
+
+  Widget _buildMonitoringExplainerBanner() {
+    return PageBanner(
+      pref: 'monitoring_explainer_dismissed',
+      dismissed: _monitoringExplainerDismissed,
+      text:
+            'Service Keeper runs a persistent background watcher that reads Android\'s activity log in real time. '
+          'The moment a monitored service stops Service Keeper detects it and restarts it straight away. '
+            'Interval checking is a safety net: it periodically re-checks all services to catch '
+            'anything the live watcher may have missed (e.g. if Shizuku was briefly offline). '
+            'It\'s optional, but useful as a backup.',
+      onDismiss: () async {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setBool('monitoring_explainer_dismissed', true);
+            if (mounted) setState(() => _monitoringExplainerDismissed = true);
+          },
+      icon: Icons.info,
+      color:
+          Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.4),
+      textColor: Theme.of(context).colorScheme.onPrimaryContainer,
+      iconColor: Theme.of(context).colorScheme.onPrimaryContainer,
+      pageIndex: 0,
+      pageController: _pageController,
+    );
+  }
+
+  Widget _buildAppRestartTipBanner() {
+    final cs = Theme.of(context).colorScheme;
+    return PageBanner(
+      pref: 'app_restart_tip_dismissed',
+      dismissed: _appRestartTipDismissed,
+      text: "Tip: If a service can't be started directly, enable \"Restart whole app\" in its Configure menu to launch the app instead.",
+
+      onDismiss: () async {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setBool('app_restart_tip_dismissed', true);
+            if (mounted) setState(() => _appRestartTipDismissed = true);
+          },
+      icon: Icons.open_in_browser_outlined,
+      color:
+          cs.tertiaryContainer.withValues(alpha: 0.45),
+      textColor: cs.onTertiaryContainer,
+      iconColor: cs.onTertiaryContainer,
+      pageIndex: 0,
+      pageController: _pageController,
+    );
+  }
+
+  Widget _buildToggleExplainerBanner() {
+    if (_toggleExplainerDismissed) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+
+    Widget stateItem({
+      required IconData icon,
+      required Color indicatorColor,
+      required Color iconColor,
+      required String label,
+      required String description,
+    }) {
+      return Expanded(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: indicatorColor,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, size: 14, color: iconColor),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      style: tt.labelSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: cs.onSurface)),
+                  Text(description,
+                      style: tt.labelSmall?.copyWith(
+                          fontSize: 10,
+                          color: cs.onSurfaceVariant)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      color: cs.surfaceContainerLow,
+      padding: const EdgeInsets.fromLTRB(16, 10, 12, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.tune, size: 14, color: cs.onSurfaceVariant),
+              const SizedBox(width: 6),
+              Text('How the toggle works',
+                  style: tt.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: cs.onSurfaceVariant)),
+              const Spacer(),
+              GestureDetector(
+                onTap: () async {
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setBool('toggle_explainer_dismissed', true);
+                  if (mounted) setState(() => _toggleExplainerDismissed = true);
+                },
+                child: Icon(Icons.close, size: 16, color: cs.onSurfaceVariant),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              stateItem(
+                icon: Icons.block_outlined,
+                indicatorColor: cs.outlineVariant,
+                iconColor: cs.onSurfaceVariant,
+                label: 'Off',
+                description: 'Not monitored',
+              ),
+              stateItem(
+                icon: Icons.visibility,
+                indicatorColor: cs.secondaryContainer,
+                iconColor: cs.onSecondaryContainer,
+                label: 'Monitor',
+                description: 'Silent, no alerts',
+              ),
+              stateItem(
+                icon: Icons.notifications,
+                indicatorColor: cs.primaryContainer,
+                iconColor: cs.onPrimaryContainer,
+                label: 'Notify',
+                description: 'Watched + alerts',
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -403,73 +584,136 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Service Keeper'),
-        actions: [
-          if (_currentIndex == 0 && _shizukuStatus == ShizukuStatus.ready) ...[
-            IconButton(
-              icon: const Icon(Icons.play_circle_outline),
-              tooltip: 'Run monitor now',
-              onPressed: () => _runMonitorNow?.call(),
-            ),
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              tooltip: 'Check statuses now',
-              onPressed: () => _checkStatuses?.call(),
-            ),
-          ] else if (_currentIndex != 0)
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              tooltip: 'Refresh',
-              onPressed: () => _refreshCallbacks[_currentIndex]?.call(),
-            ),
-          PopupMenuButton<String>(
-            onSelected: (v) {
-              if (v == 'settings') {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
-                ).then((_) {
-                  _loadIntervalSetting();
-                  _refreshCallbacks[0]?.call();
-                });
-              }
-              if (v == 'toggle_interval') _toggleGlobalInterval();
-              if (v == 'backup') _backup();
-              if (v == 'restore') _restore();
-            },
-            itemBuilder: (_) => [
-              if (_currentIndex == 0)
-                PopupMenuItem(
-                  value: 'toggle_interval',
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Interval checking'),
-                      IgnorePointer(
-                        child: Transform.scale(
-                          scale: 0.8,
-                          alignment: Alignment.centerRight,
-                          child: Switch(
-                            value: _globalIntervalEnabled,
-                            onChanged: (_) {},
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+        leading: _selectionState != null
+            ? IconButton(
+                icon: const Icon(Icons.close),
+                tooltip: 'Clear selection',
+                onPressed: () => _selectionState?.onClearSelection(),
+              )
+            : null,
+        title: _selectionState != null
+            ? Text('${_selectionState!.count} selected')
+            : const Text('Service Keeper'),
+        actions: _selectionState != null
+            ? [
+                IconButton(
+                  icon: const Icon(Icons.play_circle_outline),
+                  tooltip: 'Restart selected',
+                  onPressed: () => _selectionState?.onRestartSelected(),
                 ),
-              const PopupMenuItem(value: 'settings', child: Text('Settings')),
-              const PopupMenuItem(value: 'backup', child: Text('Backup')),
-              const PopupMenuItem(value: 'restore', child: Text('Restore')),
-            ],
-          ),
-        ],
+                PopupMenuButton<String>(
+                  onSelected: (v) {
+switch (v) {
+  case 'enable':
+    _selectionState?.onEnableSelected();
+    break;
+  case 'disable':
+    _selectionState?.onDisableSelected();
+    break;
+  case 'configure':
+    _selectionState?.onConfigureSelected();
+    break;
+  case 'select_all':
+    _selectionState?.onSelectAll();
+    break;
+  case 'invert':
+    _selectionState?.onInvertSelection();
+    break;
+  case 'remove':
+    _selectionState?.onRemoveSelected();
+    break;
+}
+                  },
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(
+                        value: 'enable', child: Text('Enable monitoring')),
+                    const PopupMenuItem(
+                        value: 'disable', child: Text('Disable monitoring')),
+                    const PopupMenuItem(
+                        value: 'configure', child: Text('Configure')),
+                    const PopupMenuDivider(),
+                    const PopupMenuItem(
+                        value: 'select_all', child: Text('Select all')),
+                    const PopupMenuItem(
+                        value: 'invert', child: Text('Invert selection')),
+                    const PopupMenuDivider(),
+                    PopupMenuItem(
+                      value: 'remove',
+                      child: Text('Remove',
+                          style: TextStyle(color: Colors.red)),
+                    ),
+                  ],
+                ),
+              ]
+            : [
+                if (_currentIndex == 0 &&
+                    _shizukuStatus == ShizukuStatus.ready) ...[
+                  IconButton(
+                    icon: const Icon(Icons.play_circle_outline),
+                    tooltip: 'Run monitor now',
+                    onPressed: () => _runMonitorNow?.call(),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    tooltip: 'Check statuses now',
+                    onPressed: () => _checkStatuses?.call(),
+                  ),
+                ] else if (_currentIndex != 0)
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    tooltip: 'Refresh',
+                    onPressed: () => _refreshCallbacks[_currentIndex]?.call(),
+                  ),
+                PopupMenuButton<String>(
+                  onSelected: (v) {
+                    if (v == 'undo') _undoAction?.call();
+                    if (v == 'settings') {
+                      Navigator.push<bool>(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const SettingsScreen()),
+                      ).then((bannersReset) async {
+                        _loadIntervalSetting();
+                        _refreshCallbacks[0]?.call();
+                        if (bannersReset == true) {
+                          await _reloadBannerStates();
+                          _refreshCallbacks[1]?.call();
+                          _refreshCallbacks[2]?.call();
+                        }
+                      });
+                    }
+                    if (v == 'backup') _backup();
+                    if (v == 'restore') _restore();
+                  },
+                  itemBuilder: (_) => [
+                    if (_undoAction != null) ...[
+                      PopupMenuItem(
+                        value: 'undo',
+                        child: Row(children: [
+                          const Icon(Icons.undo, size: 18),
+                          const SizedBox(width: 8),
+                          Text('Undo: ${_undoLabel ?? 'last action'}'),
+                        ]),
+                      ),
+                      const PopupMenuDivider(),
+                    ],
+                    const PopupMenuItem(
+                        value: 'settings', child: Text('Settings')),
+                    const PopupMenuItem(value: 'backup', child: Text('Backup')),
+                    const PopupMenuItem(
+                        value: 'restore', child: Text('Restore')),
+                  ],
+                ),
+              ],
       ),
       body: Column(
         children: [
           _buildShizukuBanner(),
           _buildBatteryBanner(),
           _buildNotificationPermissionBanner(),
+          _buildToggleExplainerBanner(),
+          _buildMonitoringExplainerBanner(),
+          _buildAppRestartTipBanner(),
           Expanded(
             child: PageView(
               controller: _pageController,
@@ -490,16 +734,22 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                       _checkStatuses = checkStatuses;
                       _addService = addService;
                     },
+                    onSelectionChange: (state) =>
+                        setState(() => _selectionState = state),
+                    onUndoChange: _registerUndo,
                   ),
                 ),
                 _KeepAlive(
                   child: AccessibilityMonitorScreen(
                     onRegisterRefresh: (cb) => _refreshCallbacks[1] = cb,
+                    pageController: _pageController,
+                    onUndoChange: _registerUndo,
                   ),
                 ),
                 _KeepAlive(
                   child: NotificationMonitorScreen(
                     onRegisterRefresh: (cb) => _refreshCallbacks[2] = cb,
+                    pageController: _pageController,
                   ),
                 ),
               ],
@@ -507,7 +757,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           ),
         ],
       ),
-      floatingActionButton: _currentIndex == 0
+      floatingActionButton: _currentIndex == 0 && _selectionState == null
           ? FloatingActionButton.extended(
               onPressed: _shizukuStatus == ShizukuStatus.ready
                   ? () => _addService?.call()

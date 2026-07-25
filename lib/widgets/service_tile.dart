@@ -104,16 +104,21 @@ class _ServiceTileState extends State<ServiceTile> with WidgetsBindingObserver {
 
   Color _statusColor(BuildContext context) {
     if (widget.isRestarting) return Colors.orange;
-    if (!widget.service.enabled) return Colors.grey;
-    if (widget.service.wasRunning == null) return Colors.grey;
-    return widget.service.wasRunning! ? Colors.green : Colors.red;
+    return switch (widget.service.state) {
+      ServiceState.running => Colors.green,
+      ServiceState.crashed => Colors.red,
+      ServiceState.stopped || ServiceState.unknown => Colors.grey,
+    };
   }
 
   String _statusLabel() {
     if (widget.isRestarting) return 'Restarting';
-    if (!widget.service.enabled) return 'Disabled';
-    if (widget.service.wasRunning == null) return 'Unknown';
-    return widget.service.wasRunning! ? 'Running' : 'Not Running';
+    return switch (widget.service.state) {
+      ServiceState.running => 'Running',
+      ServiceState.crashed => 'Not Running',
+      ServiceState.stopped => 'Disabled',
+      ServiceState.unknown => 'Unknown',
+    };
   }
 
   String _intervalLabel() {
@@ -249,7 +254,7 @@ class _ServiceTileState extends State<ServiceTile> with WidgetsBindingObserver {
                         widget.service.notificationsEnabled
                             ? Icons.notifications
                             : Icons.notifications_off,
-                        size: 13,
+                        size: 16,
                         color: widget.service.notificationsEnabled
                             ? (widget.accentColor ?? theme.colorScheme.primary)
                             : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.45),
@@ -257,8 +262,9 @@ class _ServiceTileState extends State<ServiceTile> with WidgetsBindingObserver {
                       if (widget.service.appRestartEnabled) ...[
                         const SizedBox(width: 5),
                         Icon(
-                          Icons.open_in_new,
-                          size: 12,
+                          Icons.open_in_browser,
+                          semanticLabel: 'App restart enabled',
+                          size: 16,
                           color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                         ),
                       ],
@@ -288,8 +294,7 @@ class _ServiceTileState extends State<ServiceTile> with WidgetsBindingObserver {
                         ),
                       ),
                     ],
-                    if (widget.service.enabled &&
-                        widget.service.wasRunning == false &&
+                    if (widget.service.state == ServiceState.crashed &&
                         !widget.service.appRestartEnabled) ...[
                       const SizedBox(height: 3),
                       Row(

@@ -30,7 +30,7 @@ class DiagnosticsReportService {
 
 class DiagnosticsService {
   static const _githubIssueUrl =
-      'https://github.com/shaunkleyn/service_keeper/issues/new';
+      'https://github.com/shaunkleyn/Service-Keeper/issues/new';
   static const _prefillSoftLimit = 6500;
 
   final ShizukuService _shizuku;
@@ -211,7 +211,7 @@ class DiagnosticsService {
     try {
       final results = await Future.wait([
         _shizuku.exec('getprop ro.build.version.release'),
-        _shizuku.exec('getprop ro.build.version.sdk_int'),
+        _shizuku.exec('getprop ro.build.version.sdk'),
         _shizuku.exec('getprop ro.product.manufacturer'),
         _shizuku.exec('getprop ro.product.model'),
       ]);
@@ -282,6 +282,7 @@ class DiagnosticsService {
     required String title,
     required String body,
     bool preferAttachment = true,
+    Uint8List? screenshotBytes,
   }) async {
     final payload = '**Title:** $title\n\n$body';
     final prefillEncodedLength = Uri.encodeQueryComponent(body).length;
@@ -332,6 +333,8 @@ class DiagnosticsService {
         subject: 'Service Keeper diagnostics attachment',
         text: 'Attach this diagnostics file to the GitHub issue.',
       );
+    } else if (screenshotBytes != null) {
+      await _shareScreenshot(screenshotBytes, title);
     }
 
     if (context.mounted) {
@@ -340,6 +343,27 @@ class DiagnosticsService {
           : 'Opened GitHub issue with diagnostics pre-filled.';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     }
+  }
+
+  static Future<void> _shareScreenshot(Uint8List bytes, String title) async {
+    try {
+      final now = DateTime.now();
+      final ts =
+          '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
+      final safeTitle = title
+          .toLowerCase()
+          .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+          .replaceAll(RegExp(r'_+'), '_')
+          .replaceAll(RegExp(r'^_|_$'), '');
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/screenshot_${safeTitle}_$ts.png');
+      await file.writeAsBytes(bytes);
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'image/png')],
+        subject: 'Service Keeper screenshot',
+        text: 'Attach this screenshot to the GitHub issue.',
+      );
+    } catch (_) {}
   }
 
   static String _trimForFallback(String body) {

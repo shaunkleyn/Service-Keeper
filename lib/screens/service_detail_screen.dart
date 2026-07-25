@@ -40,22 +40,67 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
 
   int get _effectiveMinutes => _customIntervalMinutes ?? widget.globalIntervalMinutes;
 
+  MonitoredService _buildUpdatedService() {
+    final effectiveMinutes = _customIntervalMinutes ?? widget.globalIntervalMinutes;
+    return widget.service.copyWith(
+      customIntervalMinutes: _customIntervalMinutes,
+      intervalMinutes: effectiveMinutes,
+      appRestartEnabled: _appRestartEnabled,
+    );
+  }
+
+  bool get _hasChanges =>
+      _customIntervalMinutes != widget.service.customIntervalMinutes ||
+      _appRestartEnabled != widget.service.appRestartEnabled;
+
+  Future<bool> _handleBackNavigation() async {
+    if (_hasChanges) {
+      Navigator.pop(context, _buildUpdatedService());
+      return false;
+    }
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Configure Service'),
-        actions: [
-          TextButton(
-            onPressed: _save,
-            child: const Text('Save'),
+    return WillPopScope(
+      onWillPop: _handleBackNavigation,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Configure Service'),
+          actions: [
+            TextButton(
+              onPressed: _save,
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+        body: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.check_circle_outline,
+                    color: theme.colorScheme.onSurfaceVariant, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Changes are saved automatically when you go back. Tap Done to close now.',
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
+          const SizedBox(height: 12),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -74,6 +119,24 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
             ),
           ),
           const SizedBox(height: 16),
+          Text('Restart behavior',
+              style: theme.textTheme.titleSmall
+                  ?.copyWith(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Restart whole app if service can\'t be started'),
+            subtitle: Text(
+              'When the service fails to start directly (e.g. it\'s a JobIntentService), '
+              'Service Keeper will launch the app instead. '
+              'The app will be minimised immediately after.',
+              style: theme.textTheme.bodySmall 
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+            value: _appRestartEnabled,
+            onChanged: (v) => setState(() => _appRestartEnabled = v),
+          ),
+          const SizedBox(height: 24),
           Text('Check interval',
               style: theme.textTheme.titleSmall
                   ?.copyWith(fontWeight: FontWeight.bold)),
@@ -109,7 +172,13 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
             ),
           // Global value option
           RadioListTile<int>(
-            title: Text('Global value (${widget.globalIntervalMinutes} min)'),
+            title: Text('Default value (${widget.globalIntervalMinutes} min)'),
+            subtitle: Text(widget.globalIntervalEnabled
+                ? 'Use the value set in Settings'
+                : 'Disabled globally',
+                    style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)
+                  ),
             value: 0,
             groupValue: _customIntervalMinutes ?? 0,
             onChanged: widget.globalIntervalEnabled
@@ -154,25 +223,8 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                 ],
               ),
             ),
-          const SizedBox(height: 24),
-          Text('Restart behavior',
-              style: theme.textTheme.titleSmall
-                  ?.copyWith(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 4),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Restart whole app if service can\'t be started'),
-            subtitle: Text(
-              'When the service fails to start directly (e.g. it\'s a JobIntentService), '
-              'Service Keeper will launch the app instead. '
-              'The app will be minimised immediately after.',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            ),
-            value: _appRestartEnabled,
-            onChanged: (v) => setState(() => _appRestartEnabled = v),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -197,14 +249,6 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
       );
 
   void _save() {
-    final effectiveMinutes = _customIntervalMinutes ?? widget.globalIntervalMinutes;
-    Navigator.pop(
-      context,
-      widget.service.copyWith(
-        customIntervalMinutes: _customIntervalMinutes,
-        intervalMinutes: effectiveMinutes,
-        appRestartEnabled: _appRestartEnabled,
-      ),
-    );
+    Navigator.pop(context, _buildUpdatedService());
   }
 }
