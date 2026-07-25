@@ -40,6 +40,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   bool _notificationPermissionGranted = true;
   bool _globalIntervalEnabled = true;
   bool _appRestartTipDismissed = false;
+  bool _monitoringExplainerDismissed = false;
 
   final _refreshCallbacks = <int, VoidCallback>{};
   VoidCallback? _runMonitorNow;
@@ -77,7 +78,10 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     await _checkNotificationPermission();
     await _loadIntervalSetting();
     final prefs = await SharedPreferences.getInstance();
-    if (mounted) setState(() => _appRestartTipDismissed = prefs.getBool('app_restart_tip_dismissed') ?? false);
+    if (mounted) setState(() {
+      _appRestartTipDismissed = prefs.getBool('app_restart_tip_dismissed') ?? false;
+      _monitoringExplainerDismissed = prefs.getBool('monitoring_explainer_dismissed') ?? false;
+    });
   }
 
   Future<void> _loadIntervalSetting() async {
@@ -210,6 +214,40 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           Text('Tap to fix →', style: TextStyle(color: Colors.deepOrange, fontSize: 12)),
         ]),
       ),
+    );
+  }
+
+  Widget _buildMonitoringExplainerBanner() {
+    if (_monitoringExplainerDismissed || _currentIndex != 0) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      color: cs.primaryContainer.withValues(alpha: 0.4),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 1),
+          child: Icon(Icons.info_outline, size: 14, color: cs.onPrimaryContainer),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            'Service Keeper uses Shizuku to restart services the moment a check detects one has stopped. '
+            'Interval checking runs these checks automatically in the background — without it, '
+            'checks only happen when you open the app or tap "Run monitor now". '
+            'Interval checking is optional but keeps services alive even when the app is closed.',
+            style: TextStyle(fontSize: 12, color: cs.onPrimaryContainer),
+          ),
+        ),
+        const SizedBox(width: 8),
+        GestureDetector(
+          onTap: () async {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setBool('monitoring_explainer_dismissed', true);
+            if (mounted) setState(() => _monitoringExplainerDismissed = true);
+          },
+          child: Icon(Icons.close, size: 16, color: cs.onPrimaryContainer),
+        ),
+      ]),
     );
   }
 
@@ -561,6 +599,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           _buildShizukuBanner(),
           _buildBatteryBanner(),
           _buildNotificationPermissionBanner(),
+          _buildMonitoringExplainerBanner(),
           _buildAppRestartTipBanner(),
           Expanded(
             child: PageView(
