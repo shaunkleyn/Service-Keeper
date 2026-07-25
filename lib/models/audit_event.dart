@@ -40,7 +40,7 @@ enum AuditEventType {
         'NOTIFICATIONS_DISABLED' => notificationsDisabled,
         'INTERVAL_CHANGED' => intervalChanged,
         'CONFIG_CHANGED' => configChanged,
-        _ => configChanged,
+        _ => restartAttempted,
       };
 
   String get label => switch (this) {
