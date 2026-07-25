@@ -1001,7 +1001,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _reportServiceIssue(
       MonitoredService service, String appName) async {
     if (!mounted) return;
-    final screenshotBytes = await _captureScreen();
     final diag = DiagnosticsService(_shizuku, _db);
     var loadingOpen = true;
     showDialog(
@@ -1025,7 +1024,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final title =
           'Service not kept alive: ${service.displayLabel} (${service.packageName})';
       await DiagnosticsService.openGitHubIssue(context,
-          title: title, body: body, screenshotBytes: screenshotBytes);
+          title: title, body: body);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1042,7 +1041,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _reportAppIssue(
       String pkg, String appName, List<MonitoredService> services) async {
     if (!mounted) return;
-    final screenshotBytes = await _captureScreen();
     final diag = DiagnosticsService(_shizuku, _db);
     var loadingOpen = true;
     showDialog(
@@ -1065,7 +1063,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
       final title = 'Services not kept alive: $appName ($pkg)';
       await DiagnosticsService.openGitHubIssue(context,
-          title: title, body: body, screenshotBytes: screenshotBytes);
+          title: title, body: body);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

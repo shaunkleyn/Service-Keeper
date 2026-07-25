@@ -1,4 +1,3 @@
-import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../app_settings_notifier.dart';
@@ -89,6 +88,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     for (final key in const [
       'app_restart_tip_dismissed',
       'monitoring_explainer_dismissed',
+      'toggle_explainer_dismissed',
       'a11y_perm_info_dismissed',
       'a11y_revoke_banner_dismissed',
       'notif_perm_info_dismissed',
@@ -121,21 +121,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: _useAppColors,
             onChanged: _setAppColors,
           ),
-          DynamicColorBuilder(
-            builder: (lightDynamic, darkDynamic) {
-              final nativeAvailable = lightDynamic != null && darkDynamic != null;
-              return SwitchListTile(
-                title: const Text('Material You theme'),
-                subtitle: Text(
-                  nativeAvailable
-                      ? 'Uses colors from your wallpaper.'
-                      : 'Uses your wallpaper\'s primary color as the theme seed (Android 8.1+).',
-                ),
-                value: _useMaterialYou,
-                onChanged: _setMaterialYou,
-              );
-            },
-          ),
+          // DynamicColorBuilder(
+          //   builder: (lightDynamic, darkDynamic) {
+          //     final nativeAvailable = lightDynamic != null && darkDynamic != null;
+          //     return SwitchListTile(
+          //       title: const Text('Material You theme'),
+          //       subtitle: Text(
+          //         nativeAvailable
+          //             ? 'Uses colors from your wallpaper.'
+          //             : 'Uses your wallpaper\'s primary color as the theme seed (Android 8.1+).',
+          //       ),
+          //       value: _useMaterialYou,
+          //       onChanged: _setMaterialYou,
+          //     );
+          //   },
+          // ),
           const Divider(height: 1),
           _sectionHeader(context, 'Interval checking'),
           Padding(

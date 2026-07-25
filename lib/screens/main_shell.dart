@@ -41,6 +41,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   bool _notificationPermissionGranted = true;
   bool _appRestartTipDismissed = false;
   bool _monitoringExplainerDismissed = false;
+  bool _toggleExplainerDismissed = false;
 
   final _refreshCallbacks = <int, VoidCallback>{};
   VoidCallback? _runMonitorNow;
@@ -49,12 +50,25 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   SelectionState? _selectionState;
   String? _undoLabel;
   VoidCallback? _undoAction;
+  Timer? _undoTimer;
 
   void _registerUndo(String? label, VoidCallback? action) {
+    _undoTimer?.cancel();
+    _undoTimer = null;
     setState(() {
       _undoLabel = label;
       _undoAction = action;
     });
+    if (action != null) {
+      _undoTimer = Timer(const Duration(seconds: 10), () {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        setState(() {
+          _undoLabel = null;
+          _undoAction = null;
+        });
+      });
+    }
   }
 
   @override
@@ -67,6 +81,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   @override
   void dispose() {
     _durationTimer?.cancel();
+    _undoTimer?.cancel();
     _pageController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -90,6 +105,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     if (mounted) setState(() {
       _appRestartTipDismissed = prefs.getBool('app_restart_tip_dismissed') ?? false;
       _monitoringExplainerDismissed = prefs.getBool('monitoring_explainer_dismissed') ?? false;
+      _toggleExplainerDismissed = prefs.getBool('toggle_explainer_dismissed') ?? false;
     });
   }
 
@@ -102,6 +118,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     if (mounted) setState(() {
       _appRestartTipDismissed = prefs.getBool('app_restart_tip_dismissed') ?? false;
       _monitoringExplainerDismissed = prefs.getBool('monitoring_explainer_dismissed') ?? false;
+      _toggleExplainerDismissed = prefs.getBool('toggle_explainer_dismissed') ?? false;
     });
   }
 
@@ -267,6 +284,108 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       iconColor: cs.onTertiaryContainer,
       pageIndex: 0,
       pageController: _pageController,
+    );
+  }
+
+  Widget _buildToggleExplainerBanner() {
+    if (_toggleExplainerDismissed) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+
+    Widget stateItem({
+      required IconData icon,
+      required Color indicatorColor,
+      required Color iconColor,
+      required String label,
+      required String description,
+    }) {
+      return Expanded(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: indicatorColor,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, size: 14, color: iconColor),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      style: tt.labelSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: cs.onSurface)),
+                  Text(description,
+                      style: tt.labelSmall?.copyWith(
+                          fontSize: 10,
+                          color: cs.onSurfaceVariant)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      color: cs.surfaceContainerLow,
+      padding: const EdgeInsets.fromLTRB(16, 10, 12, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.tune, size: 14, color: cs.onSurfaceVariant),
+              const SizedBox(width: 6),
+              Text('How the toggle works',
+                  style: tt.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: cs.onSurfaceVariant)),
+              const Spacer(),
+              GestureDetector(
+                onTap: () async {
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setBool('toggle_explainer_dismissed', true);
+                  if (mounted) setState(() => _toggleExplainerDismissed = true);
+                },
+                child: Icon(Icons.close, size: 16, color: cs.onSurfaceVariant),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              stateItem(
+                icon: Icons.block_outlined,
+                indicatorColor: cs.outlineVariant,
+                iconColor: cs.onSurfaceVariant,
+                label: 'Off',
+                description: 'Not monitored',
+              ),
+              stateItem(
+                icon: Icons.visibility,
+                indicatorColor: cs.secondaryContainer,
+                iconColor: cs.onSecondaryContainer,
+                label: 'Monitor',
+                description: 'Silent, no alerts',
+              ),
+              stateItem(
+                icon: Icons.notifications,
+                indicatorColor: cs.primaryContainer,
+                iconColor: cs.onPrimaryContainer,
+                label: 'Notify',
+                description: 'Watched + alerts',
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -586,6 +705,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           _buildShizukuBanner(),
           _buildBatteryBanner(),
           _buildNotificationPermissionBanner(),
+          _buildToggleExplainerBanner(),
           _buildMonitoringExplainerBanner(),
           _buildAppRestartTipBanner(),
           Expanded(

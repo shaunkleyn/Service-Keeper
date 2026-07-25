@@ -318,10 +318,10 @@ class _AppGroupCardHeaderDelegate extends SliverPersistentHeaderDelegate {
           color1 = current == 0 ? bg ?? cs.outlineVariant : fg ?? cs.secondaryContainer;
           break;
         case 1:
-          color1 = hasIssue ? cs.errorContainer : (current >= 1 ? fg ?? cs.secondaryContainer : bg ?? cs.secondaryContainer);
+          color1 = hasIssue ? cs.errorContainer : (current >= 1 ?  cs.secondaryContainer : bg ?? cs.secondaryContainer);
           break;
         default:
-          color1 = (current >= 2 ? bg ?? cs.secondaryContainer : fg ?? cs.secondaryContainer);
+          color1 = (current >= 2 ? cs.secondaryContainer : fg ?? cs.secondaryContainer);
           break;
       }
       return color1;

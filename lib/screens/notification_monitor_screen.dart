@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:service_keeper/widgets/page_banner.dart';
-import 'package:service_keeper/widgets/page_animated.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/app_info_service.dart';
 import '../services/database_service.dart';
@@ -11,6 +10,7 @@ import '../services/diagnostics_service.dart';
 import '../services/shizuku_service.dart';
 import '../services/storage_service.dart';
 import '../services/system_service.dart';
+import '../widgets/app_group_card.dart';
 import 'service_audit_screen.dart';
 
 class NotificationMonitorScreen extends StatefulWidget {
@@ -225,34 +225,57 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
     }
   }
 
-  Future<void> _toggleAll(
-      String packageName, List<({String serviceClass, String appName})> services) async {
-    final allOn =
-        services.every((s) => _monitoredKeys.contains('$packageName/${s.serviceClass}'));
-    final applicable = allOn
-        ? services
-        : services
-            .where((s) => _enabledKeys.contains('$packageName/${s.serviceClass}'))
-            .toList();
-    if (!allOn && applicable.isEmpty) {
-      _showPermissionRequiredDialog(
-          packageName, services.first.serviceClass, services.first.appName);
-      return;
-    }
-    setState(() {
-      for (final s in applicable) {
-        final key = '$packageName/${s.serviceClass}';
-        if (allOn)
+  Future<void> _setGroupState(
+      String packageName,
+      List<({String serviceClass, String appName})> services,
+      int state) async {
+    if (state == 0) {
+      setState(() {
+        for (final s in services) {
+          final key = '$packageName/${s.serviceClass}';
           _monitoredKeys.remove(key);
-        else
-          _monitoredKeys.add(key);
-      }
-    });
-    for (final s in applicable) {
-      if (allOn) {
+          _notifOffKeys.remove(key);
+        }
+      });
+      for (final s in services) {
         await _storage.removeNotifMonitored(packageName, s.serviceClass);
-      } else {
+        await _storage.clearNotifListenerNotifOff(packageName, s.serviceClass);
+      }
+    } else {
+      final applicable = services
+          .where((s) => _enabledKeys.contains('$packageName/${s.serviceClass}'))
+          .toList();
+      final alreadyMonitored = services
+          .where((s) => _monitoredKeys.contains('$packageName/${s.serviceClass}'))
+          .toList();
+      if (applicable.isEmpty && alreadyMonitored.isEmpty) {
+        await _showPermissionRequiredDialog(
+            packageName, services.first.serviceClass, services.first.appName);
+        if (mounted) setState(() {});
+        return;
+      }
+      setState(() {
+        for (final s in applicable) {
+          _monitoredKeys.add('$packageName/${s.serviceClass}');
+        }
+        for (final s in services) {
+          final key = '$packageName/${s.serviceClass}';
+          if (state == 1) {
+            _notifOffKeys.add(key);
+          } else {
+            _notifOffKeys.remove(key);
+          }
+        }
+      });
+      for (final s in applicable) {
         await _storage.addNotifMonitored(packageName, s.serviceClass);
+      }
+      for (final s in services) {
+        if (state == 1) {
+          await _storage.setNotifListenerNotifOff(packageName, s.serviceClass);
+        } else {
+          await _storage.clearNotifListenerNotifOff(packageName, s.serviceClass);
+        }
       }
     }
   }
@@ -280,54 +303,6 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
     if (result == true && mounted) {
       await _system.openNotificationListenerSettings(
           packageName: packageName, serviceClass: serviceClass);
-    }
-  }
-
-  Widget _buildDismissableBanner({
-    required bool dismissed,
-    required String text,
-    required VoidCallback onDismiss,
-    IconData icon = Icons.info_outline,
-  }) {
-    if (dismissed) return const SizedBox.shrink();
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      width: double.infinity,
-      color: cs.primaryContainer.withValues(alpha: 0.4),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Row(children: [
-        Icon(icon, size: 14, color: cs.onPrimaryContainer),
-        const SizedBox(width: 8),
-        Expanded(
-            child: Text(text, style: TextStyle(fontSize: 12, color: cs.onPrimaryContainer))),
-        const SizedBox(width: 8),
-        GestureDetector(
-          onTap: onDismiss,
-          child: Icon(Icons.close, size: 16, color: cs.onPrimaryContainer),
-        ),
-      ]),
-    );
-  }
-
-  Future<void> _toggleAppNotif(
-      String packageName, List<({String serviceClass, String appName})> services) async {
-    final allOn =
-        services.every((s) => !_notifOffKeys.contains('$packageName/${s.serviceClass}'));
-    setState(() {
-      for (final s in services) {
-        final key = '$packageName/${s.serviceClass}';
-        if (allOn)
-          _notifOffKeys.add(key);
-        else
-          _notifOffKeys.remove(key);
-      }
-    });
-    for (final s in services) {
-      if (allOn) {
-        await _storage.setNotifListenerNotifOff(packageName, s.serviceClass);
-      } else {
-        await _storage.clearNotifListenerNotifOff(packageName, s.serviceClass);
-      }
     }
   }
 
@@ -453,6 +428,143 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
     return groups;
   }
 
+  int _groupState(String pkg, List<({String serviceClass, String appName})> services) {
+    final monitoredCount =
+        services.where((s) => _monitoredKeys.contains('$pkg/${s.serviceClass}')).length;
+    if (monitoredCount == 0) return 0;
+    final monitoredSvcs =
+        services.where((s) => _monitoredKeys.contains('$pkg/${s.serviceClass}'));
+    final allNotifOff =
+        monitoredSvcs.every((s) => _notifOffKeys.contains('$pkg/${s.serviceClass}'));
+    return allNotifOff ? 1 : 2;
+  }
+
+  bool _hasIssue(String pkg, List<({String serviceClass, String appName})> services) {
+    final monitoredCount =
+        services.where((s) => _monitoredKeys.contains('$pkg/${s.serviceClass}')).length;
+    final activeMonitored = services
+        .where((s) =>
+            _monitoredKeys.contains('$pkg/${s.serviceClass}') &&
+            _enabledKeys.contains('$pkg/${s.serviceClass}'))
+        .length;
+    return monitoredCount > 0 && activeMonitored < monitoredCount;
+  }
+
+  String _subtitle(String pkg, List<({String serviceClass, String appName})> services) {
+    final monitoredCount =
+        services.where((s) => _monitoredKeys.contains('$pkg/${s.serviceClass}')).length;
+    if (monitoredCount == 0) return 'Not monitored';
+    return '$monitoredCount of ${services.length} monitored';
+  }
+
+  Widget _buildServiceTile(
+    String pkg,
+    ({String serviceClass, String appName}) svc,
+  ) {
+    final key = '$pkg/${svc.serviceClass}';
+    final enabled = _enabledKeys.contains(key);
+    final monitored = _monitoredKeys.contains(key);
+    final appColor = _useAppColors ? _colorCache[pkg] : null;
+    final theme = Theme.of(context);
+
+    return ListTile(
+      contentPadding: const EdgeInsets.fromLTRB(16, 2, 4, 2),
+      title: Text(
+        svc.serviceClass.split('.').last,
+        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            svc.serviceClass,
+            style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 3),
+          _StatusChip(enabled: enabled),
+        ],
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Opacity(
+            opacity: enabled ? 1.0 : 0.45,
+            child: Transform.scale(
+              scale: 0.8,
+              alignment: Alignment.centerRight,
+              child: Switch(
+                value: monitored,
+                thumbColor: WidgetStateProperty.resolveWith(
+                    (s) => s.contains(WidgetState.selected) ? appColor : null),
+                trackColor: WidgetStateProperty.resolveWith(
+                    (s) => s.contains(WidgetState.selected)
+                        ? appColor?.withValues(alpha: 0.5)
+                        : null),
+                onChanged: (_) {
+                  if (!enabled) {
+                    _showPermissionRequiredDialog(pkg, svc.serviceClass, svc.appName);
+                  } else {
+                    _toggle(pkg, svc.serviceClass, svc.appName);
+                  }
+                },
+              ),
+            ),
+          ),
+          PopupMenuButton<String>(
+            icon: Icon(Icons.more_vert, size: 18, color: theme.colorScheme.onSurfaceVariant),
+            padding: EdgeInsets.zero,
+            onSelected: (v) {
+              if (v == 'history') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ServiceAuditScreen.forNotification(
+                      packageName: pkg,
+                      serviceClass: svc.serviceClass,
+                      appName: svc.appName,
+                    ),
+                  ),
+                );
+              } else if (v == 'manage_permission') {
+                _system.openNotificationListenerSettings(
+                    packageName: pkg, serviceClass: svc.serviceClass);
+              } else if (v == 'report_issue') {
+                _reportServiceIssue(pkg, svc.appName, svc.serviceClass);
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'history',
+                child: Row(children: [
+                  Icon(Icons.history, size: 18),
+                  SizedBox(width: 8),
+                  Text('History'),
+                ]),
+              ),
+              PopupMenuItem(
+                value: 'manage_permission',
+                child: Row(children: [
+                  Icon(Icons.security_outlined, size: 18),
+                  SizedBox(width: 8),
+                  Text('Manage permission'),
+                ]),
+              ),
+              PopupMenuDivider(),
+              PopupMenuItem(
+                value: 'report_issue',
+                child: Row(children: [
+                  Icon(Icons.bug_report_outlined, size: 18),
+                  SizedBox(width: 8),
+                  Text('Report Issue'),
+                ]),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final groups = _grouped();
@@ -464,7 +576,6 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
       });
 
     if (_loading) return const Center(child: CircularProgressIndicator());
-
 
     return Column(
       children: [
@@ -501,420 +612,23 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
               ? const Center(child: Text('No third-party notification listeners found.'))
               : CustomScrollView(
                   slivers: [
-                    SliverMainAxisGroup(
-                      slivers: [
-                        const SliverToBoxAdapter(child: SizedBox(height: 8)),
-                        for (final pkg in pkgs)
-                          SliverMainAxisGroup(
-                            slivers: [
-                              SliverPersistentHeader(
-                                pinned: _expandedGroups[pkg] == true,
-                                delegate: _NotifGroupHeaderDelegate(
-                                  packageName: pkg,
-                                  appName: groups[pkg]!.first.appName,
-                                  iconBytes: _iconCache[pkg],
-                                  services: groups[pkg]!,
-                                  enabledKeys: _enabledKeys,
-                                  monitoredKeys: _monitoredKeys,
-                                  notifOffKeys: _notifOffKeys,
-                                  expanded: _expandedGroups[pkg] ?? false,
-                                  appColor: _useAppColors ? _colorCache[pkg] : null,
-                                  onTap: () => setState(() {
-                                    _expandedGroups[pkg] =
-                                        !(_expandedGroups[pkg] ?? false);
-                                  }),
-                                  onToggleAll: () => _toggleAll(pkg, groups[pkg]!),
-                                  onToggleNotif: () => _toggleAppNotif(pkg, groups[pkg]!),
-                                  onOpenHistory: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => ServiceAuditScreen.forApp(
-                                        packageName: pkg,
-                                        appName: groups[pkg]!.first.appName,
-                                      ),
-                                    ),
-                                  ),
-                                  onReportIssue: () =>
-                                      _reportAppIssue(pkg, groups[pkg]!.first.appName, groups[pkg]!),
-                                  onManagePermission: () =>
-                                      _system.openNotificationListenerSettings(packageName: pkg),
-                                ),
-                              ),
-                              if (_expandedGroups[pkg] == true)
-                                SliverList(
-                                  delegate: SliverChildBuilderDelegate(
-                                    childCount: groups[pkg]!.length,
-                                    (ctx, i) {
-                                      final svc = groups[pkg]![i];
-                                      final key = '$pkg/${svc.serviceClass}';
-                                      final enabled = _enabledKeys.contains(key);
-                                      final monitored = _monitoredKeys.contains(key);
-                                      final isLast = i == groups[pkg]!.length - 1;
-                                      final tileTheme = Theme.of(ctx);
-                                      final appColor =
-                                          _useAppColors ? _colorCache[pkg] : null;
-                                      final dark = tileTheme.brightness == Brightness.dark;
-                                      final bodyBg = appColor == null
-                                          ? tileTheme.colorScheme.surfaceContainerLow
-                                          : Color.alphaBlend(
-                                              appColor.withValues(
-                                                  alpha: dark ? 0.22 : 0.10),
-                                              dark
-                                                  ? const Color(0xFF1C1C1C)
-                                                  : Colors.white,
-                                            );
-
-                                      return Padding(
-                                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                                        child: ClipRRect(
-                                          borderRadius: isLast
-                                              ? const BorderRadius.only(
-                                                  bottomLeft: Radius.circular(12),
-                                                  bottomRight: Radius.circular(12),
-                                                )
-                                              : BorderRadius.zero,
-                                          child: ColoredBox(
-                                            color: bodyBg,
-                                            child: Column(children: [
-                                              ListTile(
-                                                contentPadding:
-                                                    const EdgeInsets.fromLTRB(16, 2, 4, 2),
-                                                title: Text(
-                                                  svc.serviceClass.split('.').last,
-                                                  style: const TextStyle(
-                                                      fontSize: 13,
-                                                      fontWeight: FontWeight.w500),
-                                                ),
-                                                subtitle: Column(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  children: [
-                                                    Text(svc.serviceClass,
-                                                        style: TextStyle(
-                                                            fontSize: 11,
-                                                            color: tileTheme.colorScheme
-                                                                .onSurfaceVariant)),
-                                                    const SizedBox(height: 3),
-                                                    _StatusChip(enabled: enabled),
-                                                  ],
-                                                ),
-                                                trailing: Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    Opacity(
-                                                      opacity: enabled ? 1.0 : 0.45,
-                                                      child: Transform.scale(
-                                                        scale: 0.8,
-                                                        alignment: Alignment.centerRight,
-                                                        child: Switch(
-                                                          value: monitored,
-                                                          thumbColor: WidgetStateProperty.resolveWith(
-                                                              (s) => s.contains(WidgetState.selected) ? appColor : null),
-                                                          trackColor: WidgetStateProperty.resolveWith(
-                                                              (s) => s.contains(WidgetState.selected) ? appColor?.withValues(alpha: 0.5) : null),
-                                                          onChanged: (_) {
-                                                            if (!enabled) {
-                                                              _showPermissionRequiredDialog(pkg, svc.serviceClass, svc.appName);
-                                                            } else {
-                                                              _toggle(pkg, svc.serviceClass, svc.appName);
-                                                            }
-                                                          },
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    PopupMenuButton<String>(
-                                                      icon: Icon(Icons.more_vert,
-                                                          size: 18,
-                                                          color: tileTheme
-                                                              .colorScheme.onSurfaceVariant),
-                                                      padding: EdgeInsets.zero,
-                                                      onSelected: (v) {
-                                                        if (v == 'history') {
-                                                          Navigator.push(
-                                                            context,
-                                                            MaterialPageRoute(
-                                                              builder: (_) =>
-                                                                  ServiceAuditScreen
-                                                                      .forNotification(
-                                                                packageName: pkg,
-                                                                serviceClass:
-                                                                    svc.serviceClass,
-                                                                appName: svc.appName,
-                                                              ),
-                                                            ),
-                                                          );
-                                                        }
-                                                        if (v == 'manage_permission') {
-                                                          _system.openNotificationListenerSettings(
-                                                              packageName: pkg,
-                                                              serviceClass: svc.serviceClass);
-                                                        }
-                                                        if (v == 'report_issue') {
-                                                          _reportServiceIssue(
-                                                            pkg,
-                                                            svc.appName,
-                                                            svc.serviceClass,
-                                                          );
-                                                        }
-                                                      },
-                                                      itemBuilder: (_) => [
-                                                        const PopupMenuItem(
-                                                          value: 'history',
-                                                          child: Row(children: [
-                                                            Icon(Icons.history, size: 18),
-                                                            SizedBox(width: 8),
-                                                            Text('History'),
-                                                          ]),
-                                                        ),
-                                                        const PopupMenuItem(
-                                                          value: 'manage_permission',
-                                                          child: Row(children: [
-                                                            Icon(Icons.security_outlined, size: 18),
-                                                            SizedBox(width: 8),
-                                                            Text('Manage permission'),
-                                                          ]),
-                                                        ),
-                                                        const PopupMenuDivider(),
-                                                        const PopupMenuItem(
-                                                          value: 'report_issue',
-                                                          child: Row(children: [
-                                                            Icon(Icons.bug_report_outlined, size: 18),
-                                                            SizedBox(width: 8),
-                                                            Text('Report Issue'),
-                                                          ]),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              if (!isLast)
-                                                Divider(
-                                                  height: 1,
-                                                  thickness: 1,
-                                                  color: tileTheme.colorScheme.outlineVariant
-                                                      .withValues(alpha: 0.5),
-                                                ),
-                                            ]),
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                ),
-                              const SliverToBoxAdapter(child: SizedBox(height: 8)),
-                            ],
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-        ),
-      ],
-    );
-  }
-}
-
-class _NotifGroupHeaderDelegate extends SliverPersistentHeaderDelegate {
-  final String packageName;
-  final String appName;
-  final Uint8List? iconBytes;
-  final List<({String serviceClass, String appName})> services;
-  final Set<String> enabledKeys;
-  final Set<String> monitoredKeys;
-  final Set<String> notifOffKeys;
-  final bool expanded;
-  final Color? appColor;
-  final VoidCallback onTap;
-  final VoidCallback onToggleAll;
-  final VoidCallback onToggleNotif;
-  final VoidCallback onOpenHistory;
-  final VoidCallback onReportIssue;
-  final VoidCallback onManagePermission;
-
-  const _NotifGroupHeaderDelegate({
-    required this.packageName,
-    required this.appName,
-    this.iconBytes,
-    required this.services,
-    required this.enabledKeys,
-    required this.monitoredKeys,
-    required this.notifOffKeys,
-    required this.expanded,
-    this.appColor,
-    required this.onTap,
-    required this.onToggleAll,
-    required this.onToggleNotif,
-    required this.onOpenHistory,
-    required this.onReportIssue,
-    required this.onManagePermission,
-  });
-
-  @override
-  double get minExtent => 80;
-  @override
-  double get maxExtent => 80;
-
-  @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
-    final theme = Theme.of(context);
-
-    final Color? headerFg = appColor == null
-        ? null
-        : (ThemeData.estimateBrightnessForColor(appColor!) == Brightness.dark
-            ? Colors.white
-            : Colors.black87);
-
-    final bgColor = appColor ?? theme.colorScheme.surfaceContainerHighest;
-    final fg = headerFg ?? theme.colorScheme.onSurface;
-
-    final allMonitored =
-        services.every((s) => monitoredKeys.contains('$packageName/${s.serviceClass}'));
-    final notifEnabled =
-        services.every((s) => !notifOffKeys.contains('$packageName/${s.serviceClass}'));
-    final monitoredCount =
-        services.where((s) => monitoredKeys.contains('$packageName/${s.serviceClass}')).length;
-    final activeMonitored = services
-        .where((s) =>
-            monitoredKeys.contains('$packageName/${s.serviceClass}') &&
-            enabledKeys.contains('$packageName/${s.serviceClass}'))
-        .length;
-    final hasIssue = monitoredCount > 0 && activeMonitored < monitoredCount;
-
-    final subtitle = switch ((monitoredCount, services.length)) {
-      (0, _) => 'Not monitored',
-      (final m, final t) => '$m of $t monitored',
-    };
-
-    Widget avatarWidget = iconBytes != null
-        ? CircleAvatar(
-            radius: 20,
-            backgroundImage: MemoryImage(iconBytes!),
-            backgroundColor: Colors.transparent,
-          )
-        : CircleAvatar(
-            radius: 20,
-            backgroundColor: fg.withValues(alpha: 0.15),
-            child: Text(
-              packageName.isNotEmpty ? packageName.split('.').last[0].toUpperCase() : '?',
-              style: TextStyle(color: fg, fontWeight: FontWeight.bold),
-            ),
-          );
-
-    final cardRadius = BorderRadius.only(
-      topLeft: const Radius.circular(12),
-      topRight: const Radius.circular(12),
-      bottomLeft: expanded ? Radius.zero : const Radius.circular(12),
-      bottomRight: expanded ? Radius.zero : const Radius.circular(12),
-    );
-
-    return ColoredBox(
-      color: theme.colorScheme.surface,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-        child: Material(
-          color: bgColor,
-          borderRadius: cardRadius,
-          elevation: overlapsContent ? 4 : 1,
-          shadowColor: Colors.black26,
-          child: InkWell(
-            borderRadius: cardRadius,
-            onTap: onTap,
-            child: SizedBox(
-              height: 72,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      avatarWidget,
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              appName,
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                color: fg,
-                              ),
-                            ),
-                            Text(
-                              subtitle,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                fontSize: 12,
-                                color: headerFg?.withValues(alpha: 0.75) ??
-                                    theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (hasIssue)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 4),
-                          child: Icon(Icons.warning_amber,
-                              color: appColor != null ? fg : Colors.orange, size: 18),
-                        ),
-                      Transform.scale(
-                        scale: 0.75,
-                        alignment: Alignment.centerRight,
-                        child: Switch(
-                          value: allMonitored,
-                          thumbColor: WidgetStateProperty.resolveWith(
-                              (s) => s.contains(WidgetState.selected) && appColor != null ? fg : null),
-                          trackColor: WidgetStateProperty.resolveWith(
-                              (s) => s.contains(WidgetState.selected) && appColor != null ? fg.withValues(alpha: 0.4) : null),
-                          onChanged: (_) => onToggleAll(),
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.only(right: 2),
-                        child: Icon(
-                          notifEnabled ? Icons.notifications : Icons.notifications_off,
-                          size: 16,
-                          color: notifEnabled ? fg : fg.withValues(alpha: 0.35),
-                        ),
-                      ),
-                      PopupMenuButton<String>(
-                        icon: Icon(Icons.more_vert, size: 20, color: fg),
-                        padding: EdgeInsets.zero,
-                        onSelected: (v) {
-                          if (v == 'toggle_notif') {
-                            onToggleNotif();
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                              content: Text(notifEnabled
-                                  ? 'Notifications disabled'
-                                  : 'Notifications enabled'),
-                              duration: const Duration(seconds: 2),
-                            ));
-                          } else if (v == 'history') {
-                            onOpenHistory();
-                          } else if (v == 'manage_permission') {
-                            onManagePermission();
-                          } else if (v == 'report_issue') {
-                            onReportIssue();
-                          }
-                        },
-                        itemBuilder: (_) => [
+                    for (final pkg in pkgs) ...[
+                      AppGroupCard(
+                        key: ValueKey(pkg),
+                        expanded: _expandedGroups[pkg] ?? false,
+                        onToggleExpanded: () => setState(
+                            () => _expandedGroups[pkg] = !(_expandedGroups[pkg] ?? false)),
+                        packageName: pkg,
+                        appName: groups[pkg]!.first.appName,
+                        iconBytes: _iconCache[pkg],
+                        appColor: _useAppColors ? _colorCache[pkg] : null,
+                        subtitle: _subtitle(pkg, groups[pkg]!),
+                        groupState: _groupState(pkg, groups[pkg]!),
+                        hasIssue: _hasIssue(pkg, groups[pkg]!),
+                        onGroupStateChanged: (state) =>
+                            _setGroupState(pkg, groups[pkg]!, state),
+                        menuItems: const [
                           PopupMenuItem(
-                            value: 'toggle_notif',
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                const Text('Notifications'),
-                                IgnorePointer(
-                                  child: Transform.scale(
-                                    scale: 0.8,
-                                    alignment: Alignment.centerRight,
-                                    child: Switch(value: notifEnabled, onChanged: (_) {}),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const PopupMenuItem(
                             value: 'history',
                             child: Row(children: [
                               Icon(Icons.history, size: 18),
@@ -922,7 +636,7 @@ class _NotifGroupHeaderDelegate extends SliverPersistentHeaderDelegate {
                               Text('History'),
                             ]),
                           ),
-                          const PopupMenuItem(
+                          PopupMenuItem(
                             value: 'manage_permission',
                             child: Row(children: [
                               Icon(Icons.security_outlined, size: 18),
@@ -930,8 +644,8 @@ class _NotifGroupHeaderDelegate extends SliverPersistentHeaderDelegate {
                               Text('Manage permission'),
                             ]),
                           ),
-                          const PopupMenuDivider(),
-                          const PopupMenuItem(
+                          PopupMenuDivider(),
+                          PopupMenuItem(
                             value: 'report_issue',
                             child: Row(children: [
                               Icon(Icons.bug_report_outlined, size: 18),
@@ -940,32 +654,35 @@ class _NotifGroupHeaderDelegate extends SliverPersistentHeaderDelegate {
                             ]),
                           ),
                         ],
-                      ),
-                      AnimatedRotation(
-                        turns: expanded ? 0.5 : 0,
-                        duration: const Duration(milliseconds: 200),
-                        child: Icon(Icons.expand_more, color: fg),
+                        onMenuSelected: (v) {
+                          if (v == 'history') {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ServiceAuditScreen.forApp(
+                                  packageName: pkg,
+                                  appName: groups[pkg]!.first.appName,
+                                ),
+                              ),
+                            );
+                          } else if (v == 'manage_permission') {
+                            _system.openNotificationListenerSettings(packageName: pkg);
+                          } else if (v == 'report_issue') {
+                            _reportAppIssue(pkg, groups[pkg]!.first.appName, groups[pkg]!);
+                          }
+                        },
+                        children: [
+                          for (final svc in groups[pkg]!)
+                            _buildServiceTile(pkg, svc),
+                        ],
                       ),
                     ],
-                  ),
+                  ],
                 ),
-              ),
-            ),
-          ),
         ),
+      ],
     );
   }
-
-  @override
-  bool shouldRebuild(_NotifGroupHeaderDelegate old) =>
-      old.expanded != expanded ||
-      old.monitoredKeys != monitoredKeys ||
-      old.enabledKeys != enabledKeys ||
-      old.notifOffKeys != notifOffKeys ||
-      old.appColor != appColor ||
-      old.iconBytes != iconBytes ||
-      old.onReportIssue != onReportIssue ||
-      old.onManagePermission != onManagePermission;
 }
 
 class _StatusChip extends StatelessWidget {
