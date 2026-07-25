@@ -249,7 +249,7 @@ class _ServiceTileState extends State<ServiceTile> with WidgetsBindingObserver {
                         widget.service.notificationsEnabled
                             ? Icons.notifications
                             : Icons.notifications_off,
-                        size: 13,
+                        size: 16,
                         color: widget.service.notificationsEnabled
                             ? (widget.accentColor ?? theme.colorScheme.primary)
                             : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.45),
@@ -257,8 +257,9 @@ class _ServiceTileState extends State<ServiceTile> with WidgetsBindingObserver {
                       if (widget.service.appRestartEnabled) ...[
                         const SizedBox(width: 5),
                         Icon(
-                          Icons.open_in_new,
-                          size: 12,
+                          Icons.open_in_browser,
+                          semanticLabel: 'App restart enabled',
+                          size: 16,
                           color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                         ),
                       ],

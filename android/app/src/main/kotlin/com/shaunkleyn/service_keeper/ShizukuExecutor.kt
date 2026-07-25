@@ -69,7 +69,10 @@ object ShizukuExecutor {
 
             if (appRestartEnabled) {
                 val launched = restartViaAppLaunch(packageName)
-                if (launched && isServiceRunning(packageName, serviceClass)) {
+                // Keep behavior consistent with manual restart path in Dart:
+                // app launch fallback is considered a successful recovery trigger
+                // even when service visibility in dumpsys is delayed.
+                if (launched) {
                     return StartResult(true, "restart method: app launch")
                 }
             }

@@ -44,6 +44,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   VoidCallback? _runMonitorNow;
   VoidCallback? _checkStatuses;
   VoidCallback? _addService;
+  SelectionState? _selectionState;
 
   @override
   void initState() {
@@ -403,67 +404,125 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Service Keeper'),
-        actions: [
-          if (_currentIndex == 0 && _shizukuStatus == ShizukuStatus.ready) ...[
-            IconButton(
-              icon: const Icon(Icons.play_circle_outline),
-              tooltip: 'Run monitor now',
-              onPressed: () => _runMonitorNow?.call(),
-            ),
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              tooltip: 'Check statuses now',
-              onPressed: () => _checkStatuses?.call(),
-            ),
-          ] else if (_currentIndex != 0)
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              tooltip: 'Refresh',
-              onPressed: () => _refreshCallbacks[_currentIndex]?.call(),
-            ),
-          PopupMenuButton<String>(
-            onSelected: (v) {
-              if (v == 'settings') {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
-                ).then((_) {
-                  _loadIntervalSetting();
-                  _refreshCallbacks[0]?.call();
-                });
-              }
-              if (v == 'toggle_interval') _toggleGlobalInterval();
-              if (v == 'backup') _backup();
-              if (v == 'restore') _restore();
-            },
-            itemBuilder: (_) => [
-              if (_currentIndex == 0)
-                PopupMenuItem(
-                  value: 'toggle_interval',
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Interval checking'),
-                      IgnorePointer(
-                        child: Transform.scale(
-                          scale: 0.8,
-                          alignment: Alignment.centerRight,
-                          child: Switch(
-                            value: _globalIntervalEnabled,
-                            onChanged: (_) {},
-                          ),
+        leading: _selectionState != null
+            ? IconButton(
+                icon: const Icon(Icons.close),
+                tooltip: 'Clear selection',
+                onPressed: () => _selectionState?.onClearSelection(),
+              )
+            : null,
+        title: _selectionState != null
+            ? Text('${_selectionState!.count} selected')
+            : const Text('Service Keeper'),
+        actions: _selectionState != null
+            ? [
+                IconButton(
+                  icon: const Icon(Icons.play_circle_outline),
+                  tooltip: 'Restart selected',
+                  onPressed: () => _selectionState?.onRestartSelected(),
+                ),
+                PopupMenuButton<String>(
+                  onSelected: (v) {
+                    switch (v) {
+                      case 'enable':
+                        _selectionState?.onEnableSelected();
+                      case 'disable':
+                        _selectionState?.onDisableSelected();
+                      case 'configure':
+                        _selectionState?.onConfigureSelected();
+                      case 'select_all':
+                        _selectionState?.onSelectAll();
+                      case 'invert':
+                        _selectionState?.onInvertSelection();
+                      case 'remove':
+                        _selectionState?.onRemoveSelected();
+                    }
+                  },
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(
+                        value: 'enable', child: Text('Enable monitoring')),
+                    const PopupMenuItem(
+                        value: 'disable', child: Text('Disable monitoring')),
+                    const PopupMenuItem(
+                        value: 'configure', child: Text('Configure')),
+                    const PopupMenuDivider(),
+                    const PopupMenuItem(
+                        value: 'select_all', child: Text('Select all')),
+                    const PopupMenuItem(
+                        value: 'invert', child: Text('Invert selection')),
+                    const PopupMenuDivider(),
+                    PopupMenuItem(
+                      value: 'remove',
+                      child: Text('Remove',
+                          style: TextStyle(color: Colors.red)),
+                    ),
+                  ],
+                ),
+              ]
+            : [
+                if (_currentIndex == 0 &&
+                    _shizukuStatus == ShizukuStatus.ready) ...[
+                  IconButton(
+                    icon: const Icon(Icons.play_circle_outline),
+                    tooltip: 'Run monitor now',
+                    onPressed: () => _runMonitorNow?.call(),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    tooltip: 'Check statuses now',
+                    onPressed: () => _checkStatuses?.call(),
+                  ),
+                ] else if (_currentIndex != 0)
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    tooltip: 'Refresh',
+                    onPressed: () => _refreshCallbacks[_currentIndex]?.call(),
+                  ),
+                PopupMenuButton<String>(
+                  onSelected: (v) {
+                    if (v == 'settings') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const SettingsScreen()),
+                      ).then((_) {
+                        _loadIntervalSetting();
+                        _refreshCallbacks[0]?.call();
+                      });
+                    }
+                    if (v == 'toggle_interval') _toggleGlobalInterval();
+                    if (v == 'backup') _backup();
+                    if (v == 'restore') _restore();
+                  },
+                  itemBuilder: (_) => [
+                    if (_currentIndex == 0)
+                      PopupMenuItem(
+                        value: 'toggle_interval',
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Interval checking'),
+                            IgnorePointer(
+                              child: Transform.scale(
+                                scale: 0.8,
+                                alignment: Alignment.centerRight,
+                                child: Switch(
+                                  value: _globalIntervalEnabled,
+                                  onChanged: (_) {},
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ],
-                  ),
+                    const PopupMenuItem(
+                        value: 'settings', child: Text('Settings')),
+                    const PopupMenuItem(value: 'backup', child: Text('Backup')),
+                    const PopupMenuItem(
+                        value: 'restore', child: Text('Restore')),
+                  ],
                 ),
-              const PopupMenuItem(value: 'settings', child: Text('Settings')),
-              const PopupMenuItem(value: 'backup', child: Text('Backup')),
-              const PopupMenuItem(value: 'restore', child: Text('Restore')),
-            ],
-          ),
-        ],
+              ],
       ),
       body: Column(
         children: [
@@ -490,6 +549,8 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                       _checkStatuses = checkStatuses;
                       _addService = addService;
                     },
+                    onSelectionChange: (state) =>
+                        setState(() => _selectionState = state),
                   ),
                 ),
                 _KeepAlive(
@@ -507,7 +568,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           ),
         ],
       ),
-      floatingActionButton: _currentIndex == 0
+      floatingActionButton: _currentIndex == 0 && _selectionState == null
           ? FloatingActionButton.extended(
               onPressed: _shizukuStatus == ShizukuStatus.ready
                   ? () => _addService?.call()

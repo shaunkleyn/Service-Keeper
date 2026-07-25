@@ -75,7 +75,11 @@ class DatabaseService {
 
   Future<List<MonitoredService>> loadServices() async {
     final d = await db;
-    final rows = await d.query('services');
+    final rows = await d.query(
+      'services',
+      orderBy:
+          'package_name COLLATE NOCASE ASC, display_label COLLATE NOCASE ASC, service_class COLLATE NOCASE ASC',
+    );
     return rows.map(_serviceFromMap).toList();
   }
 

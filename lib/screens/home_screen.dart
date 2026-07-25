@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter/services.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -19,6 +21,30 @@ import 'service_picker_screen.dart';
 import 'service_detail_screen.dart';
 import 'service_audit_screen.dart';
 
+class SelectionState {
+  final int count;
+  final VoidCallback onClearSelection;
+  final VoidCallback onSelectAll;
+  final VoidCallback onInvertSelection;
+  final VoidCallback onRestartSelected;
+  final VoidCallback onRemoveSelected;
+  final VoidCallback onEnableSelected;
+  final VoidCallback onDisableSelected;
+  final VoidCallback onConfigureSelected;
+
+  const SelectionState({
+    required this.count,
+    required this.onClearSelection,
+    required this.onSelectAll,
+    required this.onInvertSelection,
+    required this.onRestartSelected,
+    required this.onRemoveSelected,
+    required this.onEnableSelected,
+    required this.onDisableSelected,
+    required this.onConfigureSelected,
+  });
+}
+
 class HomeScreen extends StatefulWidget {
   final ShizukuStatus shizukuStatus;
   final Future<void> Function() onRequestShizukuPermission;
@@ -28,12 +54,14 @@ class HomeScreen extends StatefulWidget {
     required VoidCallback checkStatuses,
     required VoidCallback addService,
   }) onRegister;
+  final void Function(SelectionState?)? onSelectionChange;
 
   const HomeScreen({
     super.key,
     required this.shizukuStatus,
     required this.onRequestShizukuPermission,
     required this.onRegister,
+    this.onSelectionChange,
   });
 
   @override
@@ -58,6 +86,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _loading = true;
   final _expandedGroups = <String, bool>{};
   final _restartingServices = <String>{};
+  final _screenshotKey = GlobalKey();
+  final _selectedServices = <String>{};
+  bool get _isInSelectionMode => _selectedServices.isNotEmpty;
 
   @override
   void initState() {
@@ -153,7 +184,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _loadServices() async {
     final list = await _storage.loadServices();
-    if (mounted) setState(() => _services = list);
+    if (mounted) {
+      setState(() {
+        _services = list;
+        if (_selectedServices.isNotEmpty) {
+          final validKeys =
+              list.map((s) => '${s.packageName}/${s.serviceClass}').toSet();
+          _selectedServices.removeWhere((k) => !validKeys.contains(k));
+        }
+      });
+      _notifySelection();
+    }
     _fetchIconsAndNames(list);
     _system.startKeeperService(list.length);
     _cleanupUninstalledServices(list);
@@ -306,7 +347,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       serviceClass: service.serviceClass,
       displayLabel: service.displayLabel,
       intervalMinutes: minutes,
-      appRestartEnabled: service.appRestartEnabled,
     );
 
     Workmanager().cancelByTag(service.workTag);
@@ -714,9 +754,230 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  String _serviceKey(MonitoredService s) => '${s.packageName}/${s.serviceClass}';
+  bool _isServiceSelected(MonitoredService s) => _selectedServices.contains(_serviceKey(s));
+  bool _isAppSelected(List<MonitoredService> services) =>
+      services.isNotEmpty && services.every(_isServiceSelected);
+  bool _isAppPartiallySelected(List<MonitoredService> services) =>
+      !_isAppSelected(services) && services.any(_isServiceSelected);
+  List<MonitoredService> get _selectedServiceList =>
+      _services.where((s) => _selectedServices.contains(_serviceKey(s))).toList();
+
+  void _toggleServiceSelection(MonitoredService s) {
+    final key = _serviceKey(s);
+    setState(() {
+      if (_selectedServices.contains(key)) {
+        _selectedServices.remove(key);
+      } else {
+        _selectedServices.add(key);
+      }
+    });
+    _notifySelection();
+  }
+
+  void _toggleAppSelection(List<MonitoredService> services) {
+    final allSelected = _isAppSelected(services);
+    setState(() {
+      for (final s in services) {
+        final key = _serviceKey(s);
+        if (allSelected) {
+          _selectedServices.remove(key);
+        } else {
+          _selectedServices.add(key);
+        }
+      }
+    });
+    _notifySelection();
+  }
+
+  void _clearSelection() {
+    setState(() => _selectedServices.clear());
+    _notifySelection();
+  }
+
+  void _selectAll() {
+    setState(() {
+      for (final s in _services) {
+        _selectedServices.add(_serviceKey(s));
+      }
+    });
+    _notifySelection();
+  }
+
+  void _invertSelection() {
+    setState(() {
+      final allKeys = _services.map(_serviceKey).toSet();
+      final inverted = allKeys.difference(_selectedServices);
+      _selectedServices
+        ..clear()
+        ..addAll(inverted);
+    });
+    _notifySelection();
+  }
+
+  void _notifySelection() {
+    if (_selectedServices.isEmpty) {
+      widget.onSelectionChange?.call(null);
+      return;
+    }
+    widget.onSelectionChange?.call(SelectionState(
+      count: _selectedServices.length,
+      onClearSelection: _clearSelection,
+      onSelectAll: _selectAll,
+      onInvertSelection: _invertSelection,
+      onRestartSelected: _restartSelected,
+      onRemoveSelected: _removeSelected,
+      onEnableSelected: _enableSelected,
+      onDisableSelected: _disableSelected,
+      onConfigureSelected: _configureSelected,
+    ));
+  }
+
+  Future<void> _removeApp(
+      String pkg, String appName, List<MonitoredService> services) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove app'),
+        content: Text('Stop monitoring all services for "$appName"?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    for (final s in services) {
+      Workmanager().cancelByTag(s.workTag);
+      await _system.cancelMonitorWork(s.workTag);
+      await _storage.removeService(s);
+      await _log(s, AuditEventType.removed, AuditTrigger.manual);
+    }
+    await _loadServices();
+  }
+
+  Future<void> _removeSelected() async {
+    final selected = _selectedServiceList;
+    if (selected.isEmpty) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove services'),
+        content: Text(
+            'Remove monitoring for ${selected.length} service${selected.length == 1 ? '' : 's'}?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    for (final s in selected) {
+      Workmanager().cancelByTag(s.workTag);
+      await _system.cancelMonitorWork(s.workTag);
+      await _storage.removeService(s);
+      await _log(s, AuditEventType.removed, AuditTrigger.manual);
+    }
+    _clearSelection();
+    await _loadServices();
+  }
+
+  Future<void> _enableSelected() async {
+    for (final s in _selectedServiceList) {
+      final updated = s.copyWith(enabled: true);
+      await _storage.updateService(updated);
+      await _log(updated, AuditEventType.enabled, AuditTrigger.manual);
+      await _scheduleWork(updated);
+    }
+    _clearSelection();
+    await _loadServices();
+  }
+
+  Future<void> _disableSelected() async {
+    for (final s in _selectedServiceList) {
+      final updated = s.copyWith(enabled: false);
+      await _storage.updateService(updated);
+      await _log(updated, AuditEventType.disabled, AuditTrigger.manual);
+      await _scheduleWork(updated);
+    }
+    _clearSelection();
+    await _loadServices();
+  }
+
+  Future<void> _restartSelected() async {
+    final selected = _selectedServiceList;
+    if (selected.isEmpty) return;
+    await _restartAll(selected);
+    _clearSelection();
+  }
+
+  Future<void> _configureSelected() async {
+    final selected = _selectedServiceList;
+    if (selected.isEmpty) return;
+    final updated = await Navigator.push<MonitoredService>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ServiceDetailScreen(
+          service: selected.first,
+          globalIntervalEnabled: _globalIntervalEnabled,
+          globalIntervalMinutes: _defaultIntervalMinutes,
+        ),
+      ),
+    );
+    if (updated == null) return;
+    for (final s in selected) {
+      final updatedS = s.copyWith(
+        customIntervalMinutes: updated.customIntervalMinutes,
+        intervalMinutes: updated.intervalMinutes,
+        appRestartEnabled: updated.appRestartEnabled,
+      );
+      await _storage.updateService(updatedS);
+      await _scheduleWork(updatedS);
+      if (updatedS.customIntervalMinutes != s.customIntervalMinutes ||
+          updatedS.intervalMinutes != s.intervalMinutes) {
+        final mins = updatedS.customIntervalMinutes ?? _defaultIntervalMinutes;
+        await _log(updatedS, AuditEventType.intervalChanged, AuditTrigger.manual,
+            notes: 'Every ${mins}m (bulk configure)');
+      }
+      if (updatedS.appRestartEnabled != s.appRestartEnabled) {
+        await _log(updatedS, AuditEventType.configChanged, AuditTrigger.manual);
+      }
+    }
+    _clearSelection();
+    await _loadServices();
+  }
+
+  Future<Uint8List?> _captureScreen() async {
+    try {
+      final boundary =
+          _screenshotKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) return null;
+      final image = await boundary.toImage(pixelRatio: 2.0);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      return byteData?.buffer.asUint8List();
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _reportServiceIssue(
       MonitoredService service, String appName) async {
     if (!mounted) return;
+    final screenshotBytes = await _captureScreen();
     final diag = DiagnosticsService(_shizuku, _db);
     var loadingOpen = true;
     showDialog(
@@ -739,7 +1000,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
       final title =
           'Service not kept alive: ${service.displayLabel} (${service.packageName})';
-      await DiagnosticsService.openGitHubIssue(context, title: title, body: body);
+      await DiagnosticsService.openGitHubIssue(context,
+          title: title, body: body, screenshotBytes: screenshotBytes);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -756,6 +1018,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _reportAppIssue(
       String pkg, String appName, List<MonitoredService> services) async {
     if (!mounted) return;
+    final screenshotBytes = await _captureScreen();
     final diag = DiagnosticsService(_shizuku, _db);
     var loadingOpen = true;
     showDialog(
@@ -777,7 +1040,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         loadingOpen = false;
       }
       final title = 'Services not kept alive: $appName ($pkg)';
-      await DiagnosticsService.openGitHubIssue(context, title: title, body: body);
+      await DiagnosticsService.openGitHubIssue(context,
+          title: title, body: body, screenshotBytes: screenshotBytes);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -884,7 +1148,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_services.isEmpty) return _buildEmptyState();
-    return RefreshIndicator(
+    return RepaintBoundary(
+      key: _screenshotKey,
+      child: RefreshIndicator(
       onRefresh: _refreshStatuses,
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -903,6 +1169,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     appColor: _useAppColors ? _appColorCache[pkg] : null,
                     globalIntervalEnabled: _globalIntervalEnabled,
                     globalIntervalMinutes: _defaultIntervalMinutes,
+                    isInSelectionMode: _isInSelectionMode,
+                    isSelected: _isAppSelected(services),
+                    isPartiallySelected: _isAppPartiallySelected(services),
+                    onSelect: () => _toggleAppSelection(services),
+                    onRemoveApp: () => _removeApp(pkg, appName, services),
+                    onReportIssue: () => _reportAppIssue(pkg, appName, services),
                     onTap: () => setState(() {
                       _expandedGroups[pkg] = !(_expandedGroups[pkg] ?? false);
                     }),
@@ -921,8 +1193,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             await _setAppInterval(services, result == -1 ? null : result);
                           }
                         : null,
-                    onReportIssue: () =>
-                        _reportAppIssue(pkg, appName, services),
                   ),
                 ),
                 if (_expandedGroups[pkg] == true)
@@ -954,29 +1224,95 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  ServiceTile(
-                                    service: s,
-                                    showLeading: false,
-                                    accentColor: appColor,
-                                    globalIntervalEnabled: _globalIntervalEnabled,
-                                    effectiveIntervalMinutes: _effectiveInterval(s),
-                                    isRestarting: _restartingServices.contains(
-                                        '${s.packageName}/${s.serviceClass}'),
-                                    onToggle: () => _toggleService(s),
-                                    onConfigure: () => _configureService(s),
-                                    onRemove: () => _removeService(s),
-                                    onRestartNow: () => _restartNow(s),
-                                    onCheckDue: () => _checkDue(s),
-                                    onToggleNotifications: () =>
-                                        _toggleServiceNotification(s),
-                                    onViewHistory: () => Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => ServiceAuditScreen(service: s),
-                                      ),
+                                  GestureDetector(
+                                    onLongPress: _isInSelectionMode
+                                        ? null
+                                        : () => _toggleServiceSelection(s),
+                                    onTap: _isInSelectionMode
+                                        ? () => _toggleServiceSelection(s)
+                                        : null,
+                                    child: Stack(
+                                      children: [
+                                        if (_isServiceSelected(s))
+                                          Positioned.fill(
+                                            child: ColoredBox(
+                                              color: (_useAppColors &&
+                                                      _appColorCache[pkg] != null
+                                                  ? (_appColorCache[pkg]!
+                                                      .withValues(alpha: 0.25))
+                                                  : tileTheme.colorScheme
+                                                      .primaryContainer
+                                                      .withValues(alpha: 0.4)),
+                                            ),
+                                          ),
+                                        Row(
+                                          children: [
+                                            if (_isInSelectionMode)
+                                              Padding(
+                                                padding: const EdgeInsets.only(
+                                                    left: 12),
+                                                child: Icon(
+                                                  _isServiceSelected(s)
+                                                      ? Icons.check_box
+                                                      : Icons
+                                                          .check_box_outline_blank,
+                                                  size: 20,
+                                                  color: _isServiceSelected(s)
+                                                      ? (appColor ??
+                                                          tileTheme.colorScheme
+                                                              .primary)
+                                                      : tileTheme.colorScheme
+                                                          .onSurfaceVariant
+                                                          .withValues(alpha: 0.5),
+                                                ),
+                                              ),
+                                            Expanded(
+                                              child: ServiceTile(
+                                                service: s,
+                                                showLeading: false,
+                                                accentColor: appColor,
+                                                globalIntervalEnabled:
+                                                    _globalIntervalEnabled,
+                                                effectiveIntervalMinutes:
+                                                    _effectiveInterval(s),
+                                                isRestarting: _restartingServices
+                                                    .contains(
+                                                        '${s.packageName}/${s.serviceClass}'),
+                                                onToggle: _isInSelectionMode
+                                                    ? null
+                                                    : () => _toggleService(s),
+                                                onConfigure: _isInSelectionMode
+                                                    ? null
+                                                    : () => _configureService(s),
+                                                onRemove: _isInSelectionMode
+                                                    ? null
+                                                    : () => _removeService(s),
+                                                onRestartNow: _isInSelectionMode
+                                                    ? null
+                                                    : () => _restartNow(s),
+                                                onCheckDue: () => _checkDue(s),
+                                                onToggleNotifications:
+                                                    _isInSelectionMode
+                                                        ? null
+                                                        : () =>
+                                                            _toggleServiceNotification(
+                                                                s),
+                                                onViewHistory: _isInSelectionMode
+                                                    ? null
+                                                    : () => Navigator.push(
+                                                          context,
+                                                          MaterialPageRoute(
+                                                            builder: (_) =>
+                                                                ServiceAuditScreen(
+                                                                    service: s),
+                                                          ),
+                                                        ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
                                     ),
-                                    onReportIssue: () =>
-                                        _reportServiceIssue(s, appName),
                                   ),
                                   if (!isLast)
                                     Divider(
@@ -999,6 +1335,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           const SliverToBoxAdapter(child: SizedBox(height: 80)),
         ],
       ),
+    ),
     );
   }
 
@@ -1038,6 +1375,12 @@ class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
   final Color? appColor;
   final bool globalIntervalEnabled;
   final int globalIntervalMinutes;
+  final bool isInSelectionMode;
+  final bool isSelected;
+  final bool isPartiallySelected;
+  final VoidCallback onSelect;
+  final VoidCallback? onRemoveApp;
+  final VoidCallback? onReportIssue;
   final VoidCallback onTap;
   final VoidCallback onRestartAll;
   final VoidCallback onViewHistory;
@@ -1045,7 +1388,6 @@ class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
   final bool notificationsEnabled;
   final VoidCallback onAddServices;
   final VoidCallback? onSetInterval;
-  final VoidCallback? onReportIssue;
 
   const _GroupHeaderDelegate({
     required this.packageName,
@@ -1056,6 +1398,12 @@ class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
     this.appColor,
     this.globalIntervalEnabled = true,
     this.globalIntervalMinutes = 15,
+    this.isInSelectionMode = false,
+    this.isSelected = false,
+    this.isPartiallySelected = false,
+    required this.onSelect,
+    this.onRemoveApp,
+    this.onReportIssue,
     required this.onTap,
     required this.onRestartAll,
     required this.onViewHistory,
@@ -1063,7 +1411,6 @@ class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.notificationsEnabled,
     required this.onAddServices,
     this.onSetInterval,
-    this.onReportIssue,
   });
 
   @override
@@ -1083,7 +1430,11 @@ class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
             ? Colors.white
             : Colors.black87);
 
-    final bgColor = appColor ?? theme.colorScheme.surfaceContainerHighest;
+    Color bgColor = appColor ?? theme.colorScheme.surfaceContainerHighest;
+    if (isSelected || isPartiallySelected) {
+      bgColor = Color.alphaBlend(
+          theme.colorScheme.primary.withValues(alpha: 0.15), bgColor);
+    }
     final fg = headerFg ?? theme.colorScheme.onSurface;
 
     final cardRadius = BorderRadius.only(
@@ -1114,13 +1465,25 @@ class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
           shadowColor: Colors.black26,
           child: InkWell(
             borderRadius: cardRadius,
-            onTap: onTap,
+            onTap: isInSelectionMode ? onSelect : onTap,
+            onLongPress: isInSelectionMode ? null : onSelect,
             child: SizedBox(
               height: 72,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Row(
                   children: [
+                    if (isInSelectionMode)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 4),
+                        child: isPartiallySelected
+                            ? Icon(Icons.indeterminate_check_box_outlined,
+                                color: fg, size: 20)
+                            : (isSelected
+                                ? Icon(Icons.check_box, color: fg, size: 20)
+                                : Icon(Icons.check_box_outline_blank,
+                                    color: fg.withValues(alpha: 0.5), size: 20)),
+                      ),
                     icon,
                     const SizedBox(width: 16),
                     Expanded(
@@ -1148,13 +1511,13 @@ class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
                     ),
                     if (anyIssue)
                       Padding(
-                        padding: const EdgeInsets.only(right: 4),
+                        padding: const EdgeInsets.only(right: 8),
                         child: Icon(Icons.warning_amber,
                             color: appColor != null ? fg : Colors.orange, size: 18),
                       ),
                     if (!anyIssue && allEnabled)
                       Padding(
-                        padding: const EdgeInsets.only(right: 4),
+                        padding: const EdgeInsets.only(right: 8),
                         child: Icon(Icons.check_circle,
                             color: appColor != null ? fg : Colors.green, size: 18),
                       ),
@@ -1180,29 +1543,76 @@ class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
                         if (v == 'toggle_notifications') onToggleNotifications();
                         if (v == 'set_interval') onSetInterval?.call();
                         if (v == 'report_issue') onReportIssue?.call();
+                        if (v == 'remove_app') onRemoveApp?.call();
                       },
                       itemBuilder: (_) => [
-                        const PopupMenuItem(value: 'add_services', child: Text('Add services')),
-                        const PopupMenuItem(value: 'restart_all', child: Text('Restart all')),
-                        const PopupMenuItem(value: 'view_history', child: Text('View history')),
+                        const PopupMenuItem(
+                          value: 'add_services',
+                          child: Row(
+                            children: [
+                              Icon(Icons.add, size: 16),
+                              SizedBox(width: 8),
+                              Text('Add services'),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuItem(
+                          value: 'restart_all',
+                          child: Row(
+                            children: [
+                              Icon(Icons.restart_alt_outlined, size: 16),
+                              SizedBox(width: 8),
+                              Text('Restart all'),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuItem(
+                          value: 'view_history',
+                          child: Row(
+                            children: [
+                              Icon(Icons.history_outlined, size: 16),
+                              SizedBox(width: 8),
+                              Text('View history'),
+                            ],
+                          ),
+                        ),
                         if (globalIntervalEnabled && onSetInterval != null)
                           const PopupMenuItem(
-                            value: 'set_interval',
-                            child: Text('Set Check Interval'),
+                          value: 'set_interval',
+                          child: Row(
+                            children: [
+                              Icon(Icons.schedule_outlined, size: 16),
+                              SizedBox(width: 8),
+                              Text('Set Check Interval'),
+                            ],
                           ),
+                        ),
                         PopupMenuItem(
                           value: 'toggle_notifications',
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            
                             children: [
+                              Row(children: [
+
+                              Icon(Icons.notifications_none_outlined, size: 16),
+                              SizedBox(width: 8),
                               const Text('Notifications'),
+                              ],),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  
                               IgnorePointer(
                                 child: Transform.scale(
                                   scale: 0.8,
                                   alignment: Alignment.centerRight,
-                                  child: Switch(value: notificationsEnabled, onChanged: (_) {}),
+                                  child: Switch(value: notificationsEnabled, onChanged: (_) {} ),
                                 ),
                               ),
+                                ],
+                              ),
+                              
                             ],
                           ),
                         ),
@@ -1214,6 +1624,17 @@ class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
                               Icon(Icons.bug_report_outlined, size: 16),
                               SizedBox(width: 8),
                               Text('Report Issue'),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuDivider(),
+                        const PopupMenuItem(
+                          value: 'remove_app',
+                          child: Row(
+                            children: [
+                              Icon(Icons.delete_outline, size: 16, color: Colors.red),
+                              SizedBox(width: 8),
+                              Text('Remove app', style: TextStyle(color: Colors.red)),
                             ],
                           ),
                         ),
@@ -1245,6 +1666,9 @@ class _GroupHeaderDelegate extends SliverPersistentHeaderDelegate {
       old.globalIntervalMinutes != globalIntervalMinutes ||
       old.onAddServices != onAddServices ||
       old.onSetInterval != onSetInterval ||
+      old.isInSelectionMode != isInSelectionMode ||
+      old.isSelected != isSelected ||
+      old.isPartiallySelected != isPartiallySelected ||
       old.onReportIssue != onReportIssue;
 }
 
@@ -1390,8 +1814,8 @@ class _AppIconWithRingsState extends State<_AppIconWithRings>
               ringColor = base.withValues(alpha: opacity.clamp(0.4, 1.0));
             }
             return SizedBox(
-              width: 44,
-              height: 44,
+              width: 43,
+              height: 43,
               child: CircularProgressIndicator(
                 value: progress,
                 strokeWidth: 3,

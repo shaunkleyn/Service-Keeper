@@ -6,7 +6,11 @@ enum AuditEventType {
   added,
   removed,
   enabled,
-  disabled;
+  disabled,
+  notificationsEnabled,
+  notificationsDisabled,
+  intervalChanged,
+  configChanged;
 
   String get value => switch (this) {
         detectedStopped => 'DETECTED_STOPPED',
@@ -17,6 +21,10 @@ enum AuditEventType {
         removed => 'REMOVED',
         enabled => 'ENABLED',
         disabled => 'DISABLED',
+        notificationsEnabled => 'NOTIFICATIONS_ENABLED',
+        notificationsDisabled => 'NOTIFICATIONS_DISABLED',
+        intervalChanged => 'INTERVAL_CHANGED',
+        configChanged => 'CONFIG_CHANGED',
       };
 
   static AuditEventType fromValue(String v) => switch (v) {
@@ -28,7 +36,11 @@ enum AuditEventType {
         'REMOVED' => removed,
         'ENABLED' => enabled,
         'DISABLED' => disabled,
-        _ => restartAttempted,
+        'NOTIFICATIONS_ENABLED' => notificationsEnabled,
+        'NOTIFICATIONS_DISABLED' => notificationsDisabled,
+        'INTERVAL_CHANGED' => intervalChanged,
+        'CONFIG_CHANGED' => configChanged,
+        _ => configChanged,
       };
 
   String get label => switch (this) {
@@ -40,6 +52,10 @@ enum AuditEventType {
         removed => 'Removed from monitoring',
         enabled => 'Monitoring enabled',
         disabled => 'Monitoring disabled',
+        notificationsEnabled => 'Notifications enabled',
+        notificationsDisabled => 'Notifications disabled',
+        intervalChanged => 'Check interval changed',
+        configChanged => 'Config changed',
       };
 }
 

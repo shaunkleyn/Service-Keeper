@@ -463,7 +463,7 @@ class KeeperForegroundService : Service() {
             appendAuditEvent(pkg, cls, label, "DETECTED_STOPPED", "AUTOMATIC", "logcat")
             appendAuditEvent(pkg, cls, label, "RESTART_ATTEMPTED", "AUTOMATIC", null)
 
-            val result = ShizukuExecutor.startServiceDetailed(pkg, cls)
+            val result = ShizukuExecutor.startServiceDetailed(pkg, cls, appRestartEnabled)
             if (result.ok) {
                 appendAuditEvent(pkg, cls, label, "RESTART_SUCCESS", "AUTOMATIC", result.detail)
                 if (notifEnabled) {
