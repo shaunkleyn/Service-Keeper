@@ -119,8 +119,22 @@ class MonitorWorker(context: Context, params: WorkerParameters) :
 
         val running = ShizukuExecutor.isServiceRunning(pkg, cls)
         if (!running) {
-            appendAuditEvent(pkg, cls, label, "DETECTED_STOPPED", "AUTOMATIC", null)
-            appendAuditEvent(pkg, cls, label, "RESTART_ATTEMPTED", "AUTOMATIC", null)
+            appendAuditEvent(
+                pkg,
+                cls,
+                label,
+                "DETECTED_STOPPED",
+                "AUTOMATIC",
+                "Worker check detected service stopped (interval: ${intervalMinutes} min)"
+            )
+            appendAuditEvent(
+                pkg,
+                cls,
+                label,
+                "RESTART_ATTEMPTED",
+                "AUTOMATIC",
+                "Worker restart attempt (app restart fallback: ${if (appRestartEnabled) "on" else "off"})"
+            )
             val start = ShizukuExecutor.startServiceDetailed(pkg, cls, appRestartEnabled)
             if (start.ok) {
                 appendAuditEvent(pkg, cls, label, "RESTART_SUCCESS", "AUTOMATIC", start.detail)

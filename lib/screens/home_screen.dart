@@ -162,6 +162,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int _effectiveInterval(MonitoredService service) =>
       service.customIntervalMinutes ?? _defaultIntervalMinutes;
 
+  String _intervalLabelForNotes(int? customIntervalMinutes) {
+    return customIntervalMinutes == null
+        ? 'default ($_defaultIntervalMinutes min)'
+        : '$customIntervalMinutes min';
+  }
+
   Future<void> _rescheduleGlobalIntervalServices() async {
     for (final s in _services) {
       if (s.customIntervalMinutes == null) {
@@ -174,25 +180,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
  
   Future<void> _log(MonitoredService s, AuditEventType type, AuditTrigger trigger,
       {String? notes}) {
-    final siblings =
-        _services.where((svc) => svc.packageName == s.packageName).toList();
-    String? snapshot;
-    if (siblings.length > 1) {
-      snapshot = siblings.map((svc) {
-        final marker = svc.serviceClass == s.serviceClass ? '▶' : '·';
-        final stateLabel = switch (svc.state) {
-          ServiceState.running => 'Running',
-          ServiceState.crashed => 'Not running',
-          ServiceState.stopped => 'Disabled',
-          ServiceState.unknown => 'Unknown',
-        };
-        return '$marker ${svc.displayLabel}: $stateLabel';
-      }).join('\n');
-    }
-    final combined = [
-      if (notes != null && notes.isNotEmpty) notes,
-      if (snapshot != null) snapshot,
-    ].join('\n');
     return _db.addEvent(AuditEvent(
       timestamp: DateTime.now(),
       packageName: s.packageName,
@@ -200,7 +187,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       displayLabel: s.displayLabel,
       eventType: type,
       trigger: trigger,
-      notes: combined.isEmpty ? null : combined,
+      notes: (notes == null || notes.isEmpty) ? null : notes,
     ));
   }
 
@@ -431,6 +418,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final currentCustomInterval =
         customIntervals.length == 1 ? customIntervals.first : services.first.customIntervalMinutes;
     final appRestartEnabled = services.every((s) => s.appRestartEnabled);
+    final previousIntervalLabel = _intervalLabelForNotes(currentCustomInterval);
 
     final result = await Navigator.push<AppSettingsResult>(
       context,
@@ -471,12 +459,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     if (changedInterval || changedRestart) {
       final anchor = services.first;
-      await _log(
-        anchor,
-        AuditEventType.configChanged,
-        AuditTrigger.manual,
-        notes: 'App settings updated for ${services.length} service(s)',
-      );
+      if (changedInterval) {
+        await _log(
+          anchor,
+          AuditEventType.intervalChanged,
+          AuditTrigger.manual,
+          notes:
+              'App settings: check interval $previousIntervalLabel -> ${_intervalLabelForNotes(result.customIntervalMinutes)} for ${services.length} service(s)',
+        );
+      }
+      if (changedRestart) {
+        await _log(
+          anchor,
+          AuditEventType.configChanged,
+          AuditTrigger.manual,
+          notes:
+              'App settings: restart fallback ${appRestartEnabled ? 'on' : 'off'} -> ${result.appRestartEnabled ? 'on' : 'off'} for ${services.length} service(s)',
+        );
+      }
     }
 
     await _loadServices();
@@ -533,6 +533,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
     if (updated == null) return;
     await _storage.updateService(updated);
+    if (updated.customIntervalMinutes != service.customIntervalMinutes ||
+        updated.intervalMinutes != service.intervalMinutes) {
+      await _log(
+        updated,
+        AuditEventType.intervalChanged,
+        AuditTrigger.manual,
+        notes:
+            'Service settings: check interval ${_intervalLabelForNotes(service.customIntervalMinutes)} -> ${_intervalLabelForNotes(updated.customIntervalMinutes)}',
+      );
+    }
     await _loadServices();
     await _scheduleWork(updated);
   }
@@ -580,7 +590,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final key = '${service.packageName}/${service.serviceClass}';
     setState(() => _restartingServices.add(key));
 
-    await _log(service, AuditEventType.restartAttempted, AuditTrigger.manual);
+    await _log(
+      service,
+      AuditEventType.restartAttempted,
+      AuditTrigger.manual,
+      notes:
+          'Manual restart requested (app restart fallback: ${service.appRestartEnabled ? 'on' : 'off'})',
+    );
     final (ok, detail) = await _manager.startService(service);
 
     bool? nowRunning;
@@ -648,8 +664,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
 
-    await _log(service, AuditEventType.detectedStopped, AuditTrigger.automatic);
-    await _log(service, AuditEventType.restartAttempted, AuditTrigger.automatic);
+    await _log(
+      service,
+      AuditEventType.detectedStopped,
+      AuditTrigger.automatic,
+      notes:
+          'Health check detected stopped service (interval: ${service.intervalMinutes} min)',
+    );
+    await _log(
+      service,
+      AuditEventType.restartAttempted,
+      AuditTrigger.automatic,
+      notes:
+          'Automatic restart after failed health check (app restart fallback: ${service.appRestartEnabled ? 'on' : 'off'})',
+    );
     final (ok, detail) = await _manager.startService(service);
 
     if (!ok) {
@@ -663,7 +691,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (mounted) {
         final hint = service.appRestartEnabled
             ? null
-            : ' Try enabling "Restart whole app" in Configure.';
+          : ' Try enabling app restart fallback in App settings.';
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(
             'Could not restart ${service.displayLabel}.${hint ?? ''}',
@@ -703,7 +731,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (mounted) {
         final hint = service.appRestartEnabled
             ? null
-            : ' Try enabling "Restart whole app" in Configure.';
+          : ' Try enabling app restart fallback in App settings.';
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(
             'Could not restart ${service.displayLabel}.${hint ?? ''}',
@@ -734,7 +762,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     int failCount = 0;
 
     for (final s in enabled) {
-      await _log(s, AuditEventType.restartAttempted, AuditTrigger.manual);
+      await _log(
+        s,
+        AuditEventType.restartAttempted,
+        AuditTrigger.manual,
+        notes:
+            'Bulk manual restart (app restart fallback: ${s.appRestartEnabled ? 'on' : 'off'})',
+      );
       final (ok, detail) = await _manager.startService(s);
 
       if (ok) {
@@ -1087,6 +1121,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _services = _services.map((s) => s == service ? updated : s).toList();
     });
     await _storage.updateService(updated);
+    await _log(
+      updated,
+      nowEnabled
+          ? AuditEventType.notificationsEnabled
+          : AuditEventType.notificationsDisabled,
+      AuditTrigger.manual,
+    );
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(nowEnabled
@@ -1109,6 +1150,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         await _log(updated,
             nowEnabled ? AuditEventType.enabled : AuditEventType.disabled,
             AuditTrigger.manual);
+      }
+      if (s.notificationsEnabled != nowNotif) {
+        await _log(
+          updated,
+          nowNotif
+              ? AuditEventType.notificationsEnabled
+              : AuditEventType.notificationsDisabled,
+          AuditTrigger.manual,
+          notes: 'App group state changed',
+        );
       }
       await _scheduleWork(updated);
     }

@@ -5,6 +5,8 @@ import '../services/database_service.dart';
 
 enum AuditCategory { service, accessibility, notification }
 
+enum AuditFilter { all, restarts, settings, notifications, lifecycle }
+
 class ServiceAuditScreen extends StatefulWidget {
   final String _packageName;
   final String? _serviceClass;
@@ -54,6 +56,7 @@ class _ServiceAuditScreenState extends State<ServiceAuditScreen> {
   final _db = DatabaseService();
   List<AuditEvent> _events = [];
   bool _loading = true;
+  AuditFilter _filter = AuditFilter.all;
 
   @override
   void initState() {
@@ -75,18 +78,75 @@ class _ServiceAuditScreenState extends State<ServiceAuditScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final filtered = _events.where(_matchesFilter).toList();
     return Scaffold(
       appBar: AppBar(title: Text(widget._title)),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _events.isEmpty
               ? const Center(child: Text('No events recorded yet.'))
-              : ListView.separated(
-                  itemCount: _events.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (ctx, i) => _buildEventTile(_events[i]),
+              : Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          children: [
+                            _filterChip(AuditFilter.all, 'All'),
+                            _filterChip(AuditFilter.restarts, 'Restarts'),
+                            _filterChip(AuditFilter.settings, 'Settings'),
+                            _filterChip(AuditFilter.notifications, 'Notifications'),
+                            _filterChip(AuditFilter.lifecycle, 'Lifecycle'),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: filtered.isEmpty
+                          ? const Center(child: Text('No events match this filter.'))
+                          : ListView.separated(
+                              itemCount: filtered.length,
+                              separatorBuilder: (_, __) => const Divider(height: 1),
+                              itemBuilder: (ctx, i) => _buildEventTile(filtered[i]),
+                            ),
+                    ),
+                  ],
                 ),
     );
+  }
+
+  Widget _filterChip(AuditFilter value, String label) {
+    return ChoiceChip(
+      label: Text(label),
+      selected: _filter == value,
+      onSelected: (_) => setState(() => _filter = value),
+    );
+  }
+
+  bool _matchesFilter(AuditEvent e) {
+    if (_filter == AuditFilter.all) return true;
+    return switch (_filter) {
+      AuditFilter.all => true,
+      AuditFilter.restarts =>
+        e.eventType == AuditEventType.detectedStopped ||
+        e.eventType == AuditEventType.restartAttempted ||
+        e.eventType == AuditEventType.restartSuccess ||
+        e.eventType == AuditEventType.restartFailed,
+      AuditFilter.settings =>
+        e.eventType == AuditEventType.intervalChanged ||
+        e.eventType == AuditEventType.configChanged,
+      AuditFilter.notifications =>
+        e.eventType == AuditEventType.notificationsEnabled ||
+        e.eventType == AuditEventType.notificationsDisabled,
+      AuditFilter.lifecycle =>
+        e.eventType == AuditEventType.added ||
+        e.eventType == AuditEventType.removed ||
+        e.eventType == AuditEventType.enabled ||
+        e.eventType == AuditEventType.disabled,
+    };
   }
 
   String _eventLabel(AuditEventType t) {
@@ -164,14 +224,22 @@ class _ServiceAuditScreenState extends State<ServiceAuditScreen> {
                 style: const TextStyle(fontSize: 10, color: Colors.grey)),
           if (e.notes != null &&
               e.notes!.isNotEmpty &&
-              e.eventType == AuditEventType.restartFailed)
+              (e.eventType == AuditEventType.restartFailed ||
+                  e.eventType == AuditEventType.restartSuccess ||
+                  e.eventType == AuditEventType.restartAttempted ||
+                  e.eventType == AuditEventType.intervalChanged ||
+                  e.eventType == AuditEventType.configChanged ||
+                  e.eventType == AuditEventType.notificationsEnabled ||
+                  e.eventType == AuditEventType.notificationsDisabled))
             Padding(
               padding: const EdgeInsets.only(top: 2),
               child: Text(
                 e.notes!,
                 style: TextStyle(
                   fontSize: 10,
-                  color: Colors.red.shade700,
+                  color: e.eventType == AuditEventType.restartFailed
+                      ? Colors.red.shade700
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
                   fontStyle: FontStyle.italic,
                 ),
               ),
