@@ -386,7 +386,7 @@ class _ServiceTileState extends State<ServiceTile> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: TweenAnimationBuilder<double>(
-              tween: Tween<double>(begin: 0, end: progress),
+              tween: Tween<double>(end: progress),
               duration: const Duration(milliseconds: 350),
               curve: Curves.easeOutCubic,
               builder: (context, animatedProgress, _) {
