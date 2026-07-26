@@ -38,6 +38,9 @@ dependencies:
   # Open URLs (GitHub issue reporting)
   url_launcher: ^6.3.0
 
+  # App version info
+  package_info_plus: ^8.0.0
+
   # App color extraction
   palette_generator: ^0.3.3
 

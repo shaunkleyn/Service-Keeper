@@ -88,6 +88,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _globalIntervalEnabled = true;
   int _defaultIntervalMinutes = 15;
   bool _loading = true;
+  Set<String> _restoredMissingPackages = {};
   final _expandedGroups = <String, bool>{};
   final _restartingServices = <String>{};
   final _selectedServices = <String>{};
@@ -179,6 +180,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _db.importPendingEvents();
     await _loadSettings();
     await _loadServices();
+    final missing = await _storage.loadRestoredMissingPackages();
+    if (mounted) setState(() => _restoredMissingPackages = missing);
     await _system.rescheduleAllMonitorWork();
     setState(() => _loading = false);
   }
@@ -976,6 +979,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       await _storage.removeService(s);
       await _log(s, AuditEventType.removed, AuditTrigger.manual);
     }
+    if (_restoredMissingPackages.contains(pkg)) {
+      await _storage.clearRestoredMissingPackage(pkg);
+      _restoredMissingPackages.remove(pkg);
+    }
     await _loadServices();
   }
 
@@ -1298,6 +1305,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     List<MonitoredService> services,
   ) {
     final appColor = _useAppColors ? _appColorCache[pkg] : null;
+    final isMissingAfterRestore = _restoredMissingPackages.contains(pkg);
     final anyIssue = services.any((s) => s.state == ServiceState.crashed);
     final anyEnabled = services.any((s) => s.enabled);
     final enabledSvcs = services.where((s) => s.enabled);
@@ -1402,6 +1410,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       isInSelectionMode: _isInSelectionMode,
       isSelected: _isAppSelected(services),
       isPartiallySelected: _isAppPartiallySelected(services),
+      isRestoredMissing: isMissingAfterRestore,
       children: [
         _buildAppModeLegend(context, groupState),
         for (final s in services) _buildServiceRow(context, pkg, s, appColor),

@@ -32,6 +32,7 @@ class AppGroupCard extends StatelessWidget {
   final bool isInSelectionMode;
   final bool isSelected;
   final bool isPartiallySelected;
+  final bool isRestoredMissing;
 
   const AppGroupCard({
     super.key,
@@ -53,6 +54,7 @@ class AppGroupCard extends StatelessWidget {
     this.isInSelectionMode = false,
     this.isSelected = false,
     this.isPartiallySelected = false,
+    this.isRestoredMissing = false,
   });
 
   @override
@@ -89,6 +91,7 @@ class AppGroupCard extends StatelessWidget {
             isInSelectionMode: isInSelectionMode,
             isSelected: isSelected,
             isPartiallySelected: isPartiallySelected,
+            isRestoredMissing: isRestoredMissing,
           ),
         ),
         if (children.isNotEmpty)
@@ -156,6 +159,7 @@ class _AppGroupCardHeaderDelegate extends SliverPersistentHeaderDelegate {
   final bool isInSelectionMode;
   final bool isSelected;
   final bool isPartiallySelected;
+  final bool isRestoredMissing;
 
   const _AppGroupCardHeaderDelegate({
     required this.expanded,
@@ -175,6 +179,7 @@ class _AppGroupCardHeaderDelegate extends SliverPersistentHeaderDelegate {
     this.isInSelectionMode = false,
     this.isSelected = false,
     this.isPartiallySelected = false,
+    this.isRestoredMissing = false,
   });
 
   @override
@@ -195,7 +200,8 @@ bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
     icon != old.icon ||
     isInSelectionMode != old.isInSelectionMode ||
     isSelected != old.isSelected ||
-    isPartiallySelected != old.isPartiallySelected;
+    isPartiallySelected != old.isPartiallySelected ||
+    isRestoredMissing != old.isRestoredMissing;
 
   @override
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
@@ -313,6 +319,26 @@ bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
                                   theme.colorScheme.onSurfaceVariant,
                             ),
                           ),
+                          if (isRestoredMissing)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.warning_amber_rounded,
+                                      size: 11,
+                                      color: theme.colorScheme.error),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    'App not installed',
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      fontSize: 10,
+                                      color: theme.colorScheme.error,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                         ],
                       ),
                     ),

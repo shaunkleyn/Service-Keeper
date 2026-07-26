@@ -176,4 +176,30 @@ class StorageService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_notifListenerNotifOffKey, jsonEncode(keys.toList()));
   }
+
+  // ── Restored-but-missing package tracking ────────────────────────────────
+
+  static const _restoredMissingKey = 'restored_missing_packages';
+
+  Future<Set<String>> loadRestoredMissingPackages() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_restoredMissingKey);
+    if (raw == null) return {};
+    return Set<String>.from(jsonDecode(raw) as List);
+  }
+
+  Future<void> saveRestoredMissingPackages(Set<String> packages) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (packages.isEmpty) {
+      await prefs.remove(_restoredMissingKey);
+    } else {
+      await prefs.setString(_restoredMissingKey, jsonEncode(packages.toList()));
+    }
+  }
+
+  Future<void> clearRestoredMissingPackage(String packageName) async {
+    final packages = await loadRestoredMissingPackages();
+    packages.remove(packageName);
+    await saveRestoredMissingPackages(packages);
+  }
 }
