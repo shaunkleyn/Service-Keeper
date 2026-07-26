@@ -199,6 +199,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final oldDefault = _defaultIntervalMinutes;
     await _loadSettings();
     await _loadServices();
+    final missing = await _storage.loadRestoredMissingPackages();
+    if (mounted) setState(() => _restoredMissingPackages = missing);
     if (_defaultIntervalMinutes != oldDefault) {
       await _rescheduleGlobalIntervalServices();
     }
