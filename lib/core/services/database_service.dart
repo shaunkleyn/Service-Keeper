@@ -2,8 +2,15 @@ import 'dart:convert';
 import 'package:path/path.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
-import '../models/monitored_service.dart';
-import '../models/audit_event.dart';
+import 'package:service_keeper/core/models/audit_event.dart';
+import 'package:service_keeper/core/models/monitored_service.dart';
+import 'package:service_keeper/core/models/service_stats.dart';
+
+class _StatAccum {
+  int restarts7d = 0, restarts30d = 0;
+  int appRestarts7d = 0, appRestarts30d = 0;
+  int failed7d = 0;
+}
 
 class DatabaseService {
   static DatabaseService? _instance;
@@ -221,4 +228,47 @@ class DatabaseService {
             ? null
             : (m['was_running'] as int) == 1,
       );
+
+  // ── Stats ────────────────────────────────────────────────────────────────────
+
+  Future<AppStats> getAppStats(String packageName) async {
+    final events = await getEvents(packageName: packageName, limit: 1000);
+    final now = DateTime.now();
+    final cutoff30 = now.subtract(const Duration(days: 30));
+    final cutoff7 = now.subtract(const Duration(days: 7));
+
+    final Map<String, _StatAccum> acc = {};
+
+    for (final e in events) {
+      if (e.timestamp.isBefore(cutoff30)) continue;
+      final a = acc.putIfAbsent(e.serviceClass, _StatAccum.new);
+      final in7d = !e.timestamp.isBefore(cutoff7);
+
+      if (e.eventType == AuditEventType.restartSuccess) {
+        final isAppLaunch = e.notes?.contains('app launch') == true;
+        if (isAppLaunch) {
+          a.appRestarts30d++;
+          if (in7d) a.appRestarts7d++;
+        } else {
+          a.restarts30d++;
+          if (in7d) a.restarts7d++;
+        }
+      } else if (e.eventType == AuditEventType.restartFailed) {
+        if (in7d) a.failed7d++;
+      }
+    }
+
+    return AppStats(
+      byService: acc.map((cls, a) => MapEntry(
+            cls,
+            ServiceStats(
+              restarts7d: a.restarts7d,
+              restarts30d: a.restarts30d,
+              appRestarts7d: a.appRestarts7d,
+              appRestarts30d: a.appRestarts30d,
+              failed7d: a.failed7d,
+            ),
+          )),
+    );
+  }
 }

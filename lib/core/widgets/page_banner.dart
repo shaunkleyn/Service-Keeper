@@ -1,5 +1,5 @@
  import 'package:flutter/material.dart';
-import 'package:service_keeper/widgets/page_animated.dart';
+import 'package:service_keeper/core/widgets/page_animated.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 Widget PageBanner({required String pref, 

@@ -1,6 +1,6 @@
-import '../models/monitored_service.dart';
-import 'shizuku_service.dart';
-import 'app_info_service.dart';
+import 'package:service_keeper/core/models/monitored_service.dart';
+import 'package:service_keeper/core/services/app_info_service.dart';
+import 'package:service_keeper/core/services/shizuku_service.dart';
 
 class ServiceManager {
   final ShizukuService _shizuku;

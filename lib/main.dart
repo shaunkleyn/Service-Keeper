@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
-import 'app_settings_notifier.dart';
-import 'screens/splash_screen.dart';
-import 'services/app_info_service.dart';
+import 'package:service_keeper/core/services/app_info_service.dart';
+import 'package:service_keeper/core/theme/app_settings_notifier.dart';
+import 'package:service_keeper/features/shell/screens/splash_screen.dart';
 
 @pragma('vm:entry-point')
 void callbackDispatcher() {

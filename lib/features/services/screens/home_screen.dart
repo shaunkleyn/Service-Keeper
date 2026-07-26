@@ -5,23 +5,78 @@ import 'package:flutter/services.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
-import '../app_settings_notifier.dart';
-import '../models/monitored_service.dart';
-import '../models/audit_event.dart';
-import '../services/service_manager.dart';
-import '../services/shizuku_service.dart';
-import '../services/storage_service.dart';
-import '../services/app_info_service.dart';
-import '../services/database_service.dart';
-import '../services/diagnostics_service.dart';
-import '../services/system_service.dart';
-import '../widgets/app_group_card.dart';
-import '../widgets/service_tile.dart';
-import '../widgets/undo_snack_bar.dart';
-import 'service_picker_screen.dart';
-import 'service_detail_screen.dart';
-import 'app_settings_screen.dart';
-import 'service_audit_screen.dart';
+import 'package:service_keeper/core/models/audit_event.dart';
+import 'package:service_keeper/core/models/monitored_service.dart';
+import 'package:service_keeper/core/models/service_stats.dart';
+import 'package:service_keeper/core/services/app_info_service.dart';
+import 'package:service_keeper/core/services/database_service.dart';
+import 'package:service_keeper/core/services/diagnostics_service.dart';
+import 'package:service_keeper/core/services/shizuku_service.dart';
+import 'package:service_keeper/core/services/storage_service.dart';
+import 'package:service_keeper/core/services/system_service.dart';
+import 'package:service_keeper/core/theme/app_settings_notifier.dart';
+import 'package:service_keeper/core/widgets/undo_snack_bar.dart';
+import 'package:service_keeper/features/settings/screens/app_settings_screen.dart';
+import 'package:service_keeper/features/services/screens/service_audit_screen.dart';
+import 'package:service_keeper/features/services/screens/service_detail_screen.dart';
+import 'package:service_keeper/features/services/screens/service_picker_screen.dart';
+import 'package:service_keeper/features/services/services/service_manager.dart';
+import 'package:service_keeper/features/services/widgets/app_group_card.dart';
+import 'package:service_keeper/features/services/widgets/service_tile.dart';
+
+const List<PopupMenuEntry<String>> _kAppGroupMenuItems = [
+  PopupMenuItem(
+    value: 'app_settings',
+    child: Row(children: [
+      Icon(Icons.tune_outlined, size: 16),
+      SizedBox(width: 8),
+      Text('App settings'),
+    ]),
+  ),
+  PopupMenuDivider(),
+  PopupMenuItem(
+    value: 'add_services',
+    child: Row(children: [
+      Icon(Icons.add, size: 16),
+      SizedBox(width: 8),
+      Text('Add services'),
+    ]),
+  ),
+  PopupMenuItem(
+    value: 'restart_all',
+    child: Row(children: [
+      Icon(Icons.restart_alt_outlined, size: 16),
+      SizedBox(width: 8),
+      Text('Restart all'),
+    ]),
+  ),
+  PopupMenuItem(
+    value: 'view_history',
+    child: Row(children: [
+      Icon(Icons.history_outlined, size: 16),
+      SizedBox(width: 8),
+      Text('View history'),
+    ]),
+  ),
+  PopupMenuDivider(),
+  PopupMenuItem(
+    value: 'report_issue',
+    child: Row(children: [
+      Icon(Icons.bug_report_outlined, size: 16),
+      SizedBox(width: 8),
+      Text('Report Issue'),
+    ]),
+  ),
+  PopupMenuDivider(),
+  PopupMenuItem(
+    value: 'remove_app',
+    child: Row(children: [
+      Icon(Icons.delete_outline, size: 16, color: Colors.red),
+      SizedBox(width: 8),
+      Text('Remove app', style: TextStyle(color: Colors.red)),
+    ]),
+  ),
+];
 
 class SelectionState {
   final int count;
@@ -89,6 +144,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int _defaultIntervalMinutes = 15;
   bool _loading = true;
   Set<String> _restoredMissingPackages = {};
+  final Map<String, AppStats> _statsCache = {};
   final _expandedGroups = <String, bool>{};
   final _restartingServices = <String>{};
   final _selectedServices = <String>{};
@@ -161,7 +217,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!_globalIntervalEnabled) return;
     for (final s in _services) {
       if (!s.enabled || s.lastChecked == null) continue;
-      final key = '${s.packageName}/${s.serviceClass}';
+      final key = s.fullServiceName;
       if (_checkingServices.contains(key)) continue;
       final elapsed = _now.difference(s.lastChecked!).inSeconds;
       if (elapsed >= _effectiveInterval(s) * 60) {
@@ -250,7 +306,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _services = list;
         if (_selectedServices.isNotEmpty) {
           final validKeys =
-              list.map((s) => '${s.packageName}/${s.serviceClass}').toSet();
+              list.map((s) => s.fullServiceName).toSet();
           _selectedServices.removeWhere((k) => !validKeys.contains(k));
         }
       });
@@ -259,6 +315,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _fetchIconsAndNames(list);
     _system.startKeeperService(list.length);
     _cleanupUninstalledServices(list);
+    _loadStats(list);
+  }
+
+  Future<void> _loadStats(List<MonitoredService> services) async {
+    final packages = services.map((s) => s.packageName).toSet().toList();
+    if (packages.isEmpty) return;
+    final results = await Future.wait(packages.map(_db.getAppStats));
+    if (!mounted) return;
+    setState(() {
+      for (var i = 0; i < packages.length; i++) {
+        _statsCache[packages[i]] = results[i];
+      }
+    });
   }
 
   Future<void> _cleanupUninstalledServices(List<MonitoredService> services) async {
@@ -639,7 +708,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _showShizukuWarning();
       return;
     }
-    final key = '${service.packageName}/${service.serviceClass}';
+    final key = service.fullServiceName;
     setState(() => _restartingServices.add(key));
 
     await _log(
@@ -806,7 +875,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     setState(() {
       for (final s in enabled) {
-        _restartingServices.add('${s.packageName}/${s.serviceClass}');
+        _restartingServices.add(s.fullServiceName);
       }
     });
 
@@ -850,7 +919,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         await _storage.updateService(s.copyWith(wasRunning: false));
       }
 
-      setState(() => _restartingServices.remove('${s.packageName}/${s.serviceClass}'));
+      setState(() => _restartingServices.remove(s.fullServiceName));
     }
 
     await _loadServices();
@@ -873,17 +942,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  String _serviceKey(MonitoredService s) => '${s.packageName}/${s.serviceClass}';
-  bool _isServiceSelected(MonitoredService s) => _selectedServices.contains(_serviceKey(s));
+  bool _isServiceSelected(MonitoredService s) => _selectedServices.contains(s.fullServiceName);
   bool _isAppSelected(List<MonitoredService> services) =>
       services.isNotEmpty && services.every(_isServiceSelected);
   bool _isAppPartiallySelected(List<MonitoredService> services) =>
       !_isAppSelected(services) && services.any(_isServiceSelected);
   List<MonitoredService> get _selectedServiceList =>
-      _services.where((s) => _selectedServices.contains(_serviceKey(s))).toList();
+      _services.where((s) => _selectedServices.contains(s.fullServiceName)).toList();
 
   void _toggleServiceSelection(MonitoredService s) {
-    final key = _serviceKey(s);
+    final key = s.fullServiceName;
     setState(() {
       if (_selectedServices.contains(key)) {
         _selectedServices.remove(key);
@@ -898,7 +966,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final allSelected = _isAppSelected(services);
     setState(() {
       for (final s in services) {
-        final key = _serviceKey(s);
+        final key = s.fullServiceName;
         if (allSelected) {
           _selectedServices.remove(key);
         } else {
@@ -917,7 +985,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _selectAll() {
     setState(() {
       for (final s in _services) {
-        _selectedServices.add(_serviceKey(s));
+        _selectedServices.add(s.fullServiceName);
       }
     });
     _notifySelection();
@@ -925,7 +993,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _invertSelection() {
     setState(() {
-      final allKeys = _services.map(_serviceKey).toSet();
+      final allKeys = _services.map((s) => s.fullServiceName).toSet();
       final inverted = allKeys.difference(_selectedServices);
       _selectedServices
         ..clear()
@@ -1081,10 +1149,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
 
-  Future<void> _reportServiceIssue(
-      MonitoredService service, String appName) async {
+  Future<void> _runDiagnosticsReport(
+      Future<String> Function() buildFn, String title) async {
     if (!mounted) return;
-    final diag = DiagnosticsService(_shizuku, _db);
     var loadingOpen = true;
     showDialog(
       context: context,
@@ -1098,16 +1165,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
     );
     try {
-      final body = await diag.buildServiceReport(service, appName);
+      final body = await buildFn();
       if (!mounted) return;
       if (loadingOpen) {
         Navigator.of(context, rootNavigator: true).pop();
         loadingOpen = false;
       }
-      final title =
-          'Service not kept alive: ${service.displayLabel} (${service.packageName})';
-      await DiagnosticsService.openGitHubIssue(context,
-          title: title, body: body);
+      await DiagnosticsService.openGitHubIssue(context, title: title, body: body);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1121,43 +1185,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _reportServiceIssue(
+      MonitoredService service, String appName) async {
+    final diag = DiagnosticsService(_shizuku, _db);
+    await _runDiagnosticsReport(
+      () => diag.buildServiceReport(service, appName),
+      'Service not kept alive: ${service.displayLabel} (${service.packageName})',
+    );
+  }
+
   Future<void> _reportAppIssue(
       String pkg, String appName, List<MonitoredService> services) async {
-    if (!mounted) return;
     final diag = DiagnosticsService(_shizuku, _db);
-    var loadingOpen = true;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const AlertDialog(
-        content: Row(children: [
-          CircularProgressIndicator(),
-          SizedBox(width: 16),
-          Text('Gathering diagnostics…'),
-        ]),
-      ),
+    await _runDiagnosticsReport(
+      () => diag.buildAppReport(pkg, appName, services),
+      'Services not kept alive: $appName ($pkg)',
     );
-    try {
-      final body = await diag.buildAppReport(pkg, appName, services);
-      if (!mounted) return;
-      if (loadingOpen) {
-        Navigator.of(context, rootNavigator: true).pop();
-        loadingOpen = false;
-      }
-      final title = 'Services not kept alive: $appName ($pkg)';
-      await DiagnosticsService.openGitHubIssue(context,
-          title: title, body: body);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to generate diagnostics: $e')),
-        );
-      }
-    } finally {
-      if (mounted && loadingOpen) {
-        Navigator.of(context, rootNavigator: true).pop();
-      }
-    }
   }
 
   void _viewAppHistory(String packageName, String appName) {
@@ -1320,60 +1363,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ? Colors.white
             : Colors.black87);
 
-    final menuItems = <PopupMenuEntry<String>>[
-      const PopupMenuItem(
-        value: 'app_settings',
-        child: Row(children: [
-          Icon(Icons.tune_outlined, size: 16),
-          SizedBox(width: 8),
-          Text('App settings'),
-        ]),
-      ),
-      const PopupMenuDivider(),
-      const PopupMenuItem(
-        value: 'add_services',
-        child: Row(children: [
-          Icon(Icons.add, size: 16),
-          SizedBox(width: 8),
-          Text('Add services'),
-        ]),
-      ),
-      const PopupMenuItem(
-        value: 'restart_all',
-        child: Row(children: [
-          Icon(Icons.restart_alt_outlined, size: 16),
-          SizedBox(width: 8),
-          Text('Restart all'),
-        ]),
-      ),
-      const PopupMenuItem(
-        value: 'view_history',
-        child: Row(children: [
-          Icon(Icons.history_outlined, size: 16),
-          SizedBox(width: 8),
-          Text('View history'),
-        ]),
-      ),
-      const PopupMenuDivider(),
-      const PopupMenuItem(
-        value: 'report_issue',
-        child: Row(children: [
-          Icon(Icons.bug_report_outlined, size: 16),
-          SizedBox(width: 8),
-          Text('Report Issue'),
-        ]),
-      ),
-      const PopupMenuDivider(),
-      const PopupMenuItem(
-        value: 'remove_app',
-        child: Row(children: [
-          Icon(Icons.delete_outline, size: 16, color: Colors.red),
-          SizedBox(width: 8),
-          Text('Remove app', style: TextStyle(color: Colors.red)),
-        ]),
-      ),
-    ];
-
     return AppGroupCard(
       key: ValueKey(pkg),
       expanded: _expandedGroups[pkg] ?? false,
@@ -1397,7 +1386,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       groupState: groupState,
       hasIssue: anyIssue,
       onGroupStateChanged: (state) => _setGroupState(pkg, services, state),
-      menuItems: menuItems,
+      menuItems: _kAppGroupMenuItems,
       onMenuSelected: (v) {
         if (v == 'app_settings') _openAppSettings(pkg, appName, services);
         if (v == 'add_services') _addServiceForApp(pkg);
@@ -1412,54 +1401,113 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       isPartiallySelected: _isAppPartiallySelected(services),
       isRestoredMissing: isMissingAfterRestore,
       children: [
-        _buildAppModeLegend(context, groupState),
+        _buildStatsSection(context, pkg, services),
         for (final s in services) _buildServiceRow(context, pkg, s, appColor),
       ],
     );
   }
 
-  Widget _buildAppModeLegend(BuildContext context, int groupState) {
-    final cs = Theme.of(context).colorScheme;
+  Widget _buildStatsSection(
+    BuildContext context,
+    String pkg,
+    List<MonitoredService> services,
+  ) {
+    final appStats = _statsCache[pkg];
+    if (appStats == null || !appStats.hasAnyData) return const SizedBox.shrink();
 
-    Widget item(int value, String label, Color activeBg, Color activeFg) {
-      final selected = groupState == value;
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: selected ? activeBg : cs.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-            color: selected ? activeBg : cs.outlineVariant,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-            color: selected ? activeFg : cs.onSurfaceVariant,
-          ),
-        ),
-      );
+    final cs = Theme.of(context).colorScheme;
+    final totalSvcs = services.length;
+    final rows = <(IconData, Color, String)>[];
+
+    // Service restarts: prefer 7d, fall back to 30d
+    final svcRestarts = appStats.totalRestarts7d > 0
+        ? appStats.totalRestarts7d
+        : appStats.totalRestarts30d;
+    final svcPeriod =
+        appStats.totalRestarts7d > 0 ? 'last 7 days' : 'last 30 days';
+    if (svcRestarts > 0) {
+      rows.add((
+        Icons.restart_alt_outlined,
+        cs.primary,
+        '$svcRestarts interval restart${svcRestarts == 1 ? '' : 's'} in the $svcPeriod',
+      ));
     }
 
+    // App relaunches
+    final appRestarts = appStats.totalAppRestarts7d > 0
+        ? appStats.totalAppRestarts7d
+        : appStats.totalAppRestarts30d;
+    final appPeriod =
+        appStats.totalAppRestarts7d > 0 ? 'last 7 days' : 'last 30 days';
+    if (appRestarts > 0) {
+      rows.add((
+        Icons.rocket_launch_outlined,
+        cs.error,
+        'App relaunched $appRestarts ${appRestarts == 1 ? 'time' : 'times'} in the $appPeriod',
+      ));
+    }
+
+    // Frequently restarting services
+    final freq = appStats.frequentCount;
+    if (freq > 0) {
+      rows.add((
+        Icons.warning_amber_outlined,
+        const Color(0xFFE65100),
+        '$freq of $totalSvcs service${totalSvcs == 1 ? '' : 's'} restart${freq == 1 ? 's' : ''} frequently',
+      ));
+    }
+
+    if (rows.isEmpty) return const SizedBox.shrink();
+
+    final health = appStats.overallHealth;
+    final healthColor = health.color(cs);
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
-      child: Row(
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          item(0, 'Disabled', cs.errorContainer, cs.onErrorContainer),
-          const SizedBox(width: 6),
-          item(1, 'Monitor', cs.tertiaryContainer, cs.onTertiaryContainer),
-          const SizedBox(width: 6),
-          item(2, 'Notify', cs.primaryContainer, cs.onPrimaryContainer),
-          const Spacer(),
-          Text(
-            'Mode',
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: cs.onSurfaceVariant,
+          for (final (icon, color, label) in rows)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(children: [
+                Icon(icon, size: 12, color: color),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontSize: 11,
+                          color: cs.onSurfaceVariant,
+                        ),
+                  ),
+                ),
+              ]),
             ),
+          Row(children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: healthColor,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 5),
+            Text(
+              'Overall health: ${health.label}',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: healthColor,
+                  ),
+            ),
+          ]),
+          const SizedBox(height: 8),
+          Divider(
+            height: 1,
+            thickness: 0.5,
+            color: cs.outlineVariant.withValues(alpha: 0.5),
           ),
         ],
       ),
@@ -1508,10 +1556,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   now: _now,
                   showLeading: false,
                   accentColor: appColor,
+                  serviceStats: _statsCache[pkg]?.byService[s.serviceClass],
                   globalIntervalEnabled: _globalIntervalEnabled,
                   effectiveIntervalMinutes: _effectiveInterval(s),
-                  isRestarting: _restartingServices
-                      .contains('${s.packageName}/${s.serviceClass}'),
+                  isRestarting: _restartingServices.contains(s.fullServiceName),
                   onToggle:
                       _isInSelectionMode ? null : () => _toggleService(s),
                   onConfigure:

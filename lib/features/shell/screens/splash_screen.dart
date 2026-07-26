@@ -1,6 +1,6 @@
 import 'dart:ui' show lerpDouble;
 import 'package:flutter/material.dart';
-import 'main_shell.dart';
+import 'package:service_keeper/features/shell/screens/main_shell.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});

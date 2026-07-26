@@ -1,19 +1,17 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:palette_generator/palette_generator.dart';
-import 'package:service_keeper/widgets/app_group_card.dart';
-import 'package:service_keeper/widgets/page_banner.dart';
-import 'package:service_keeper/widgets/undo_snack_bar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../app_settings_notifier.dart';
-import '../services/app_info_service.dart';
-import '../services/database_service.dart';
-import '../services/diagnostics_service.dart';
-import '../services/shizuku_service.dart';
-import '../services/storage_service.dart';
-import '../services/system_service.dart';
-import 'service_audit_screen.dart';
+import 'package:service_keeper/core/services/app_info_service.dart';
+import 'package:service_keeper/core/services/database_service.dart';
+import 'package:service_keeper/core/services/diagnostics_service.dart';
+import 'package:service_keeper/core/services/shizuku_service.dart';
+import 'package:service_keeper/core/services/storage_service.dart';
+import 'package:service_keeper/core/services/system_service.dart';
+import 'package:service_keeper/core/widgets/monitor_screen_mixin.dart';
+import 'package:service_keeper/core/widgets/page_banner.dart';
+import 'package:service_keeper/core/widgets/undo_snack_bar.dart';
+import 'package:service_keeper/features/services/screens/service_audit_screen.dart';
+import 'package:service_keeper/features/services/widgets/app_group_card.dart';
 
 class AccessibilityMonitorScreen extends StatefulWidget {
   final void Function(VoidCallback refresh) onRegisterRefresh;
@@ -33,7 +31,7 @@ class AccessibilityMonitorScreen extends StatefulWidget {
 }
 
 class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, MonitorScreenMixin {
   final _appInfo = AppInfoService();
   final _db = DatabaseService();
   final _shizuku = ShizukuService();
@@ -45,34 +43,26 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
   Set<String> _enabledKeys = {};
   Set<String> _monitoredKeys = {};
   Set<String> _notifOffKeys = {};
-  Map<String, Uint8List?> _iconCache = {};
-  Map<String, Color> _colorCache = {};
-  Map<String, bool> _expandedGroups = {};
-  bool _useAppColors = false;
-  bool _loading = true;
-  bool _permInfoDismissed = false;
-  bool _revokeBannerDismissed = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    colorfulCardsNotifier.addListener(_onColorfulCardsChanged);
+    initMonitorScreen();
     widget.onRegisterRefresh(_load);
     _load();
   }
 
   @override
   void dispose() {
-    colorfulCardsNotifier.removeListener(_onColorfulCardsChanged);
+    disposeMonitorScreen();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
-  void _onColorfulCardsChanged() {
-    if (!mounted) return;
-    setState(() => _useAppColors = colorfulCardsNotifier.value);
-    if (_useAppColors) _generateColors();
+  @override
+  void onColorfulCardsToggled() {
+    if (useAppColors) generateColors();
   }
 
   @override
@@ -81,9 +71,9 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    setState(() => loading = true);
     final prefs = await SharedPreferences.getInstance();
-    _useAppColors = prefs.getBool('use_app_colors') ?? false;
+    useAppColors = prefs.getBool('use_app_colors') ?? false;
 
     final all = await _appInfo.getInstalledServices();
     final a11y = all
@@ -126,16 +116,16 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
         _enabledKeys = enabled;
         _monitoredKeys = monKeys;
         _notifOffKeys = notifOff;
-        _permInfoDismissed = prefs.getBool('a11y_perm_info_dismissed') ?? false;
-        _revokeBannerDismissed = prefs.getBool('a11y_revoke_banner_dismissed') ?? false;
-        _loading = false;
+        permInfoDismissed = prefs.getBool('a11y_perm_info_dismissed') ?? false;
+        revokeBannerDismissed = prefs.getBool('a11y_revoke_banner_dismissed') ?? false;
+        loading = false;
         for (final pkg in a11y.map((s) => s.packageName).toSet()) {
-          _expandedGroups.putIfAbsent(pkg, () => false);
+          expandedGroups.putIfAbsent(pkg, () => false);
         }
       });
     }
-    await _fetchIcons(a11y.map((s) => s.packageName).toSet());
-    if (_useAppColors) _generateColors();
+    await fetchIcons(a11y.map((s) => s.packageName).toSet());
+    if (useAppColors) generateColors();
   }
 
   Future<void> _refreshEnabledState() async {
@@ -159,57 +149,6 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
     for (final k in revoked) {
       final slash = k.indexOf('/');
       if (slash >= 0) await _storage.removeA11yMonitored(k.substring(0, slash), k.substring(slash + 1));
-    }
-  }
-
-  Future<void> _fetchIcons(Set<String> packages) async {
-    final prefs = await SharedPreferences.getInstance();
-    final cached = <String, Uint8List?>{};
-    for (final pkg in packages) {
-      final b64 = prefs.getString('app_icon_v1_$pkg');
-      if (b64 != null) cached[pkg] = base64Decode(b64);
-    }
-    if (mounted && cached.isNotEmpty) setState(() => _iconCache = {..._iconCache, ...cached});
-
-    final missing = packages.where((p) => !cached.containsKey(p)).toSet();
-    for (final pkg in missing) {
-      final bytes = await _appInfo.getAppIcon(pkg);
-      if (bytes != null) {
-        await prefs.setString('app_icon_v1_$pkg', base64Encode(bytes));
-        if (mounted) setState(() => _iconCache[pkg] = bytes);
-      }
-    }
-    if (_useAppColors) _generateColors();
-  }
-
-  Future<void> _generateColors() async {
-    final prefs = await SharedPreferences.getInstance();
-    for (final pkg in _iconCache.keys) {
-      if (_colorCache.containsKey(pkg)) continue;
-      final cached = prefs.getInt('app_color_v1_$pkg');
-      if (cached != null && mounted) {
-        setState(() => _colorCache[pkg] = Color(cached));
-      }
-    }
-    for (final pkg in _iconCache.keys) {
-      final bytes = _iconCache[pkg];
-      if (bytes == null) continue;
-      try {
-        final palette = await PaletteGenerator.fromImageProvider(
-          MemoryImage(bytes),
-          maximumColorCount: 16,
-        );
-        final color = palette.vibrantColor?.color ??
-            palette.lightVibrantColor?.color ??
-            palette.dominantColor?.color;
-        if (color != null) {
-          final cached = prefs.getInt('app_color_v1_$pkg');
-          if (cached != color.toARGB32()) {
-            await prefs.setInt('app_color_v1_$pkg', color.toARGB32());
-          }
-          if (mounted) setState(() => _colorCache[pkg] = color);
-        }
-      } catch (_) {}
     }
   }
 
@@ -482,18 +421,18 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
         return an.compareTo(bn);
       });
 
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (loading) return const Center(child: CircularProgressIndicator());
 
     final bannersContent = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         PageBanner(
           pref: 'a11y_perm_info_dismissed',
-          dismissed: _permInfoDismissed,
+          dismissed: permInfoDismissed,
           text: 'The apps listed here support Accessibility Services. '
               'Before Service Keeper can monitor one, its permission must be granted in Android Settings.',
           onDismiss: () async {
-            if (mounted) setState(() => _permInfoDismissed = true);
+            if (mounted) setState(() => permInfoDismissed = true);
           },
           icon: Icons.lock_open,
           color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.4),
@@ -503,11 +442,11 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
         ),
         PageBanner(
           pref: 'a11y_revoke_banner_dismissed',
-          dismissed: _revokeBannerDismissed,
+          dismissed: revokeBannerDismissed,
           text: 'Disabling monitoring here does not revoke the app\'s Android accessibility permission. '
               'To revoke, go to Android Settings.',
           onDismiss: () async {
-            if (mounted) setState(() => _revokeBannerDismissed = true);
+            if (mounted) setState(() => revokeBannerDismissed = true);
           },
           icon: Icons.lock_open,
           color: Theme.of(context).colorScheme.secondaryContainer.withValues(alpha: 0.4),
@@ -528,7 +467,7 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
         else
           ...pkgs.map((pkg) {
             final services = groups[pkg]!;
-            final appColor = _useAppColors ? _colorCache[pkg] : null;
+            final appColor = useAppColors ? colorCache[pkg] : null;
 
             final monitoredCount = services
                 .where((s) => _monitoredKeys.contains('$pkg/${s.serviceClass}'))
@@ -551,12 +490,12 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
 
             return AppGroupCard(
               key: ValueKey(pkg),
-              expanded: _expandedGroups[pkg] ?? false,
+              expanded: expandedGroups[pkg] ?? false,
               onToggleExpanded: () => setState(
-                  () => _expandedGroups[pkg] = !(_expandedGroups[pkg] ?? false)),
+                  () => expandedGroups[pkg] = !(expandedGroups[pkg] ?? false)),
               packageName: pkg,
               appName: services.first.appName,
-              iconBytes: _iconCache[pkg],
+              iconBytes: iconCache[pkg],
               appColor: appColor,
               subtitle: subtitle,
               groupState: groupState,

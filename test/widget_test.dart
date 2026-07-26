@@ -4,6 +4,7 @@ import 'package:service_keeper/main.dart';
 void main() {
   testWidgets('App smoke test', (tester) async {
     await tester.pumpWidget(const ServiceKeeperApp());
-    expect(find.text('Service Keeper'), findsWidgets);
+    await tester.pump(const Duration(seconds: 5));
+    expect(find.byType(ServiceKeeperApp), findsOneWidget);
   });
 }

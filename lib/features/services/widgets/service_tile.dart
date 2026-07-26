@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../models/monitored_service.dart';
+import 'package:service_keeper/core/models/monitored_service.dart';
+import 'package:service_keeper/core/models/service_stats.dart';
 
 class ServiceTile extends StatefulWidget {
   final MonitoredService service;
@@ -14,6 +15,7 @@ class ServiceTile extends StatefulWidget {
   final VoidCallback? onToggleNotifications;
   final VoidCallback? onReportIssue;
   final Color? accentColor;
+  final ServiceStats? serviceStats;
   final bool showLeading;
   final bool globalIntervalEnabled;
   final int effectiveIntervalMinutes;
@@ -33,6 +35,7 @@ class ServiceTile extends StatefulWidget {
     this.onToggleNotifications,
     this.onReportIssue,
     this.accentColor,
+    this.serviceStats,
     this.showLeading = true,
     this.globalIntervalEnabled = true,
     this.effectiveIntervalMinutes = 15,
@@ -75,11 +78,6 @@ class _ServiceTileState extends State<ServiceTile> {
         widget.onCheckDue?.call();
       });
     }
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
   }
 
   Color _statusColor(BuildContext context) {
@@ -229,6 +227,11 @@ class _ServiceTileState extends State<ServiceTile> {
                           ),
                         ),
                       ),
+                      if (widget.serviceStats != null &&
+                          widget.serviceStats!.hasData) ...[
+                        const SizedBox(width: 6),
+                        _HealthChip(health: widget.serviceStats!.health),
+                      ],
                       const SizedBox(width: 8),
                       Icon(
                         widget.service.notificationsEnabled
@@ -272,6 +275,30 @@ class _ServiceTileState extends State<ServiceTile> {
                           color: theme.colorScheme.onSurfaceVariant,
                           fontStyle: FontStyle.italic,
                         ),
+                      ),
+                    ],
+                    if (widget.serviceStats?.triggeredAppRestart == true) ...[
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Icon(Icons.rocket_launch_outlined,
+                              size: 11,
+                              color: theme.colorScheme.error
+                                  .withValues(alpha: 0.85)),
+                          const SizedBox(width: 3),
+                          Flexible(
+                            child: Text(
+                              'Required app relaunch to recover'
+                              ' (${widget.serviceStats!.appRestarts30d}× in 30 days)',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontSize: 10,
+                                color: theme.colorScheme.error
+                                    .withValues(alpha: 0.85),
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                     if (widget.service.state == ServiceState.crashed &&
@@ -418,5 +445,32 @@ class _ServiceTileState extends State<ServiceTile> {
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
     if (diff.inHours < 24) return '${diff.inHours}h ago';
     return '${diff.inDays}d ago';
+  }
+}
+
+class _HealthChip extends StatelessWidget {
+  final ServiceHealth health;
+  const _HealthChip({required this.health});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final color = health.color(cs);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withValues(alpha: 0.35), width: 0.5),
+      ),
+      child: Text(
+        health.label,
+        style: TextStyle(
+          fontSize: 10,
+          color: color,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
   }
 }

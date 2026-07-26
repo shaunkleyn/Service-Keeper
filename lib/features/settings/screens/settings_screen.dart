@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../app_settings_notifier.dart';
-import '../services/app_info_service.dart';
+import 'package:service_keeper/core/services/app_info_service.dart';
+import 'package:service_keeper/core/theme/app_settings_notifier.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});

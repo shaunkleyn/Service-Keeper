@@ -1,5 +1,5 @@
 import 'dart:convert';
-import '../models/monitored_service.dart';
+import 'package:service_keeper/core/models/monitored_service.dart';
 
 class AppBackupSettings {
   final bool useAppColors;

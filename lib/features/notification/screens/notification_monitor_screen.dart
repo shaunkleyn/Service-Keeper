@@ -1,18 +1,16 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:palette_generator/palette_generator.dart';
-import 'package:service_keeper/widgets/page_banner.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../app_settings_notifier.dart';
-import '../services/app_info_service.dart';
-import '../services/database_service.dart';
-import '../services/diagnostics_service.dart';
-import '../services/shizuku_service.dart';
-import '../services/storage_service.dart';
-import '../services/system_service.dart';
-import '../widgets/app_group_card.dart';
-import 'service_audit_screen.dart';
+import 'package:service_keeper/core/services/app_info_service.dart';
+import 'package:service_keeper/core/services/database_service.dart';
+import 'package:service_keeper/core/services/diagnostics_service.dart';
+import 'package:service_keeper/core/services/shizuku_service.dart';
+import 'package:service_keeper/core/services/storage_service.dart';
+import 'package:service_keeper/core/services/system_service.dart';
+import 'package:service_keeper/core/widgets/monitor_screen_mixin.dart';
+import 'package:service_keeper/core/widgets/page_banner.dart';
+import 'package:service_keeper/features/services/screens/service_audit_screen.dart';
+import 'package:service_keeper/features/services/widgets/app_group_card.dart';
 
 class NotificationMonitorScreen extends StatefulWidget {
   final void Function(VoidCallback refresh) onRegisterRefresh;
@@ -29,7 +27,7 @@ class NotificationMonitorScreen extends StatefulWidget {
 }
 
 class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, MonitorScreenMixin {
   final _appInfo = AppInfoService();
   final _db = DatabaseService();
   final _shizuku = ShizukuService();
@@ -41,34 +39,26 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
   Set<String> _enabledKeys = {};
   Set<String> _monitoredKeys = {};
   Set<String> _notifOffKeys = {};
-  Map<String, Uint8List?> _iconCache = {};
-  Map<String, Color> _colorCache = {};
-  Map<String, bool> _expandedGroups = {};
-  bool _useAppColors = false;
-  bool _loading = true;
-  bool _permInfoDismissed = false;
-  bool _revokeBannerDismissed = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    colorfulCardsNotifier.addListener(_onColorfulCardsChanged);
+    initMonitorScreen();
     widget.onRegisterRefresh(_load);
     _load();
   }
 
   @override
   void dispose() {
-    colorfulCardsNotifier.removeListener(_onColorfulCardsChanged);
+    disposeMonitorScreen();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
-  void _onColorfulCardsChanged() {
-    if (!mounted) return;
-    setState(() => _useAppColors = colorfulCardsNotifier.value);
-    if (_useAppColors) _generateColors();
+  @override
+  void onColorfulCardsToggled() {
+    if (useAppColors) generateColors();
   }
 
   @override
@@ -77,9 +67,9 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    setState(() => loading = true);
     final prefs = await SharedPreferences.getInstance();
-    _useAppColors = prefs.getBool('use_app_colors') ?? false;
+    useAppColors = prefs.getBool('use_app_colors') ?? false;
 
     final all = await _appInfo.getInstalledServices();
     final notif = all
@@ -124,16 +114,16 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
         _enabledKeys = enabled;
         _monitoredKeys = monKeys;
         _notifOffKeys = notifOff;
-        _permInfoDismissed = prefs.getBool('notif_perm_info_dismissed') ?? false;
-        _revokeBannerDismissed = prefs.getBool('notif_revoke_banner_dismissed') ?? false;
-        _loading = false;
+        permInfoDismissed = prefs.getBool('notif_perm_info_dismissed') ?? false;
+        revokeBannerDismissed = prefs.getBool('notif_revoke_banner_dismissed') ?? false;
+        loading = false;
         for (final s in notif) {
-          _expandedGroups.putIfAbsent(s.packageName, () => false);
+          expandedGroups.putIfAbsent(s.packageName, () => false);
         }
       });
     }
-    await _fetchIcons(notif.map((s) => s.packageName).toSet());
-    if (_useAppColors) _generateColors();
+    await fetchIcons(notif.map((s) => s.packageName).toSet());
+    if (useAppColors) generateColors();
   }
 
   Future<void> _refreshEnabledState() async {

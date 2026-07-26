@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../models/monitored_service.dart';
-import 'database_service.dart';
+import 'package:service_keeper/core/models/monitored_service.dart';
+import 'package:service_keeper/core/services/database_service.dart';
 
 class StorageService {
   final _db = DatabaseService();

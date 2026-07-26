@@ -2,9 +2,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../models/monitored_service.dart';
-import '../services/service_manager.dart';
-import '../services/app_info_service.dart';
+import 'package:service_keeper/core/models/monitored_service.dart';
+import 'package:service_keeper/core/services/app_info_service.dart';
+import 'package:service_keeper/features/services/services/service_manager.dart';
 
 class _Section {
   final String appName;

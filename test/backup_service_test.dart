@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:service_keeper/models/monitored_service.dart';
-import 'package:service_keeper/services/backup_service.dart';
+import 'package:service_keeper/core/models/monitored_service.dart';
+import 'package:service_keeper/core/services/backup_service.dart';
 
 void main() {
   group('AppBackupSettings', () {

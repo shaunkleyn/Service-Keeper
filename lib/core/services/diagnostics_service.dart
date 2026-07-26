@@ -5,10 +5,11 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../models/audit_event.dart';
-import '../models/monitored_service.dart';
-import 'database_service.dart';
-import 'shizuku_service.dart';
+import 'package:service_keeper/core/models/audit_event.dart';
+import 'package:service_keeper/core/models/monitored_service.dart';
+import 'package:service_keeper/core/models/service_stats.dart';
+import 'package:service_keeper/core/services/database_service.dart';
+import 'package:service_keeper/core/services/shizuku_service.dart';
 
 class DiagnosticsReportService {
   final String displayLabel;
@@ -73,6 +74,12 @@ class DiagnosticsService {
 
     await _appendDeviceInfo(buf);
 
+    final appStats = await _db.getAppStats(service.packageName);
+    final svcStats = appStats.byService[service.serviceClass];
+    if (svcStats != null && svcStats.hasData) {
+      _appendServiceStats(buf, svcStats);
+    }
+
     final events = await _db.getEvents(
       packageName: service.packageName,
       serviceClass: service.serviceClass,
@@ -114,6 +121,11 @@ class DiagnosticsService {
     buf.writeln();
 
     await _appendDeviceInfo(buf);
+
+    final appStats = await _db.getAppStats(pkg);
+    if (appStats.hasAnyData) {
+      _appendAppStats(buf, appStats, services);
+    }
 
     final events = await _db.getEvents(packageName: pkg, limit: 20);
     _appendAuditEvents(buf, events, includeServiceCol: true);
@@ -205,6 +217,50 @@ class DiagnosticsService {
     await _appendDumpsys(buf, packageName);
 
     return buf.toString();
+  }
+
+  void _appendServiceStats(StringBuffer buf, ServiceStats s) {
+    buf.writeln('### Service Stats');
+    buf.writeln('| Period | Service Restarts | App Relaunches |');
+    buf.writeln('|---|---|---|');
+    buf.writeln('| Last 7 days | ${s.restarts7d} | ${s.appRestarts7d} |');
+    buf.writeln('| Last 30 days | ${s.restarts30d} | ${s.appRestarts30d} |');
+    buf.writeln('| Health | **${s.health.label}** | |');
+    buf.writeln();
+  }
+
+  void _appendAppStats(
+      StringBuffer buf, AppStats stats, List<MonitoredService> services) {
+    buf.writeln('### App Stats');
+    buf.writeln('| Metric | Last 7 days | Last 30 days |');
+    buf.writeln('|---|---|---|');
+    buf.writeln(
+        '| Service restarts | ${stats.totalRestarts7d} | ${stats.totalRestarts30d} |');
+    buf.writeln(
+        '| App relaunches | ${stats.totalAppRestarts7d} | ${stats.totalAppRestarts30d} |');
+    buf.writeln(
+        '| Overall health | **${stats.overallHealth.label}** | |');
+    if (stats.frequentCount > 0) {
+      buf.writeln(
+          '| Frequently restarting | ${stats.frequentCount} of ${services.length} services | |');
+    }
+    buf.writeln();
+
+    final causers = stats.appRestartCauserClasses;
+    if (causers.isNotEmpty) {
+      buf.writeln('**Services that required app relaunch:**');
+      for (final cls in causers) {
+        final svc = services.firstWhere((s) => s.serviceClass == cls,
+            orElse: () => MonitoredService(
+                packageName: '',
+                serviceClass: cls,
+                displayLabel: cls.split('.').last));
+        final s = stats.byService[cls]!;
+        buf.writeln(
+            '- ${svc.displayLabel} (`$cls`) — ${s.appRestarts30d}× in 30 days');
+      }
+      buf.writeln();
+    }
   }
 
   Future<void> _appendDeviceInfo(StringBuffer buf) async {

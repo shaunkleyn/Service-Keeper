@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import '../models/audit_event.dart';
-import '../models/monitored_service.dart';
-import '../services/database_service.dart';
+import 'package:service_keeper/core/models/audit_event.dart';
+import 'package:service_keeper/core/models/monitored_service.dart';
+import 'package:service_keeper/core/services/database_service.dart';
 
 enum AuditCategory { service, accessibility, notification }
 
