@@ -201,7 +201,9 @@ bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
     isInSelectionMode != old.isInSelectionMode ||
     isSelected != old.isSelected ||
     isPartiallySelected != old.isPartiallySelected ||
-    isRestoredMissing != old.isRestoredMissing;
+    isRestoredMissing != old.isRestoredMissing ||
+    menuItems != old.menuItems ||
+    onMenuSelected != old.onMenuSelected;
 
   @override
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
