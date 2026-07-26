@@ -19,7 +19,6 @@ class ServiceDetailScreen extends StatefulWidget {
 
 class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   int? _customIntervalMinutes;
-  late bool _appRestartEnabled;
 
   static const _presets = [
     (label: '5 minutes', minutes: 5),
@@ -35,7 +34,6 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   void initState() {
     super.initState();
     _customIntervalMinutes = widget.service.customIntervalMinutes;
-    _appRestartEnabled = widget.service.appRestartEnabled;
   }
 
   int get _effectiveMinutes => _customIntervalMinutes ?? widget.globalIntervalMinutes;
@@ -45,13 +43,11 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     return widget.service.copyWith(
       customIntervalMinutes: _customIntervalMinutes,
       intervalMinutes: effectiveMinutes,
-      appRestartEnabled: _appRestartEnabled,
     );
   }
 
   bool get _hasChanges =>
-      _customIntervalMinutes != widget.service.customIntervalMinutes ||
-      _appRestartEnabled != widget.service.appRestartEnabled;
+      _customIntervalMinutes != widget.service.customIntervalMinutes;
 
   Future<bool> _handleBackNavigation() async {
     if (_hasChanges) {
@@ -117,24 +113,6 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                 ],
               ),
             ),
-          ),
-          const SizedBox(height: 16),
-          Text('Restart behavior',
-              style: theme.textTheme.titleSmall
-                  ?.copyWith(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 4),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Restart whole app if service can\'t be started'),
-            subtitle: Text(
-              'When the service fails to start directly (e.g. it\'s a JobIntentService), '
-              'Service Keeper will launch the app instead. '
-              'The app will be minimised immediately after.',
-              style: theme.textTheme.bodySmall 
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            ),
-            value: _appRestartEnabled,
-            onChanged: (v) => setState(() => _appRestartEnabled = v),
           ),
           const SizedBox(height: 24),
           Text('Check interval',

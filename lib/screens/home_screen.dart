@@ -19,6 +19,7 @@ import '../widgets/service_tile.dart';
 import '../widgets/undo_snack_bar.dart';
 import 'service_picker_screen.dart';
 import 'service_detail_screen.dart';
+import 'app_settings_screen.dart';
 import 'service_audit_screen.dart';
 
 class SelectionState {
@@ -368,6 +369,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       serviceClass: service.serviceClass,
       displayLabel: service.displayLabel,
       intervalMinutes: minutes,
+      appRestartEnabled: service.appRestartEnabled,
     );
 
     Workmanager().cancelByTag(service.workTag);
@@ -406,10 +408,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _onServicePicked(MonitoredService result) async {
+    final existingForApp =
+        _services.where((s) => s.packageName == result.packageName).toList();
+    final appRestartEnabled =
+        existingForApp.isNotEmpty ? existingForApp.every((s) => s.appRestartEnabled) : false;
     // New services use global interval by default (customIntervalMinutes = null)
     final service = result.copyWith(
       customIntervalMinutes: null,
       intervalMinutes: _defaultIntervalMinutes,
+      appRestartEnabled: appRestartEnabled,
     );
     await _storage.addService(service);
     await _log(service, AuditEventType.added, AuditTrigger.manual);
@@ -417,68 +424,73 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _scheduleWork(service);
   }
 
-  // Returns: null = cancelled, -1 = use global, positive int = specific minutes
-  Future<int?> _showIntervalDialog(BuildContext ctx, int? currentCustomMinutes) {
-    const presets = [
-      (label: '5 minutes', minutes: 5),
-      (label: '10 minutes', minutes: 10),
-      (label: '15 minutes', minutes: 15),
-      (label: '30 minutes', minutes: 30),
-      (label: '1 hour', minutes: 60),
-      (label: '2 hours', minutes: 120),
-      (label: '4 hours', minutes: 240),
-    ];
-    // 0 = global sentinel in the radio group
-    int radioValue = currentCustomMinutes ?? 0;
-    return showDialog<int>(
-      context: ctx,
-      builder: (dCtx) => StatefulBuilder(
-        builder: (dCtx, setSt) => AlertDialog(
-          title: const Text('Check interval'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                RadioListTile<int>(
-                  dense: true,
-                  title: Text('Global value ($_defaultIntervalMinutes min)'),
-                  value: 0,
-                  groupValue: radioValue,
-                  onChanged: (_) => setSt(() => radioValue = 0),
-                ),
-                ...presets.map((p) => RadioListTile<int>(
-                      dense: true,
-                      title: Text(p.label),
-                      value: p.minutes,
-                      groupValue: radioValue,
-                      onChanged: (v) => setSt(() => radioValue = v!),
-                    )),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(dCtx), child: const Text('Cancel')),
-            FilledButton(
-                onPressed: () => Navigator.pop(dCtx, radioValue == 0 ? -1 : radioValue),
-                child: const Text('Apply')),
-          ],
+  Future<void> _openAppSettings(
+      String pkg, String appName, List<MonitoredService> services) async {
+    if (services.isEmpty) return;
+    final customIntervals = services.map((s) => s.customIntervalMinutes).toSet();
+    final currentCustomInterval =
+        customIntervals.length == 1 ? customIntervals.first : services.first.customIntervalMinutes;
+    final appRestartEnabled = services.every((s) => s.appRestartEnabled);
+
+    final result = await Navigator.push<AppSettingsResult>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AppSettingsScreen(
+          appName: appName,
+          globalIntervalEnabled: _globalIntervalEnabled,
+          globalIntervalMinutes: _defaultIntervalMinutes,
+          customIntervalMinutes: currentCustomInterval,
+          appRestartEnabled: appRestartEnabled,
         ),
       ),
     );
-  }
 
-  Future<void> _setAppInterval(List<MonitoredService> services, int? customMinutes) async {
-    final effectiveMinutes = customMinutes ?? _defaultIntervalMinutes;
+    if (result == null) return;
+
+    final effectiveMinutes = result.customIntervalMinutes ?? _defaultIntervalMinutes;
+    var changedRestart = false;
+    var changedInterval = false;
+
     for (final s in services) {
       final updated = s.copyWith(
-        customIntervalMinutes: customMinutes,
+        customIntervalMinutes: result.customIntervalMinutes,
         intervalMinutes: effectiveMinutes,
+        appRestartEnabled: result.appRestartEnabled,
       );
       await _storage.updateService(updated);
       if (s.enabled && _globalIntervalEnabled) await _scheduleWork(updated);
+
+      if (updated.customIntervalMinutes != s.customIntervalMinutes ||
+          updated.intervalMinutes != s.intervalMinutes) {
+        changedInterval = true;
+      }
+      if (updated.appRestartEnabled != s.appRestartEnabled) {
+        changedRestart = true;
+      }
     }
+
+    if (changedInterval || changedRestart) {
+      final anchor = services.first;
+      await _log(
+        anchor,
+        AuditEventType.configChanged,
+        AuditTrigger.manual,
+        notes: 'App settings updated for ${services.length} service(s)',
+      );
+    }
+
     await _loadServices();
+
+    if (!mounted) return;
+    final updates = <String>[];
+    if (changedInterval) updates.add('check interval');
+    if (changedRestart) updates.add('restart fallback');
+    if (updates.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('$appName: updated ${updates.join(' and ')}'),
+        duration: const Duration(seconds: 2),
+      ));
+    }
   }
 
   Future<void> _addServiceForApp(String packageName) async {
@@ -964,7 +976,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final updatedS = s.copyWith(
         customIntervalMinutes: updated.customIntervalMinutes,
         intervalMinutes: updated.intervalMinutes,
-        appRestartEnabled: updated.appRestartEnabled,
       );
       await _storage.updateService(updatedS);
       await _scheduleWork(updatedS);
@@ -973,9 +984,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         final mins = updatedS.customIntervalMinutes ?? _defaultIntervalMinutes;
         await _log(updatedS, AuditEventType.intervalChanged, AuditTrigger.manual,
             notes: 'Every ${mins}m (bulk configure)');
-      }
-      if (updatedS.appRestartEnabled != s.appRestartEnabled) {
-        await _log(updatedS, AuditEventType.configChanged, AuditTrigger.manual);
       }
     }
     _clearSelection();
@@ -1196,6 +1204,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final allEnabledNotifOff = anyEnabled &&
         enabledSvcs.every((s) => !s.notificationsEnabled);
     final groupState = !anyEnabled ? 0 : allEnabledNotifOff ? 1 : 2;
+    final appRestartEnabled = services.every((s) => s.appRestartEnabled);
 
     final Color? headerFg = appColor == null
         ? null
@@ -1204,6 +1213,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             : Colors.black87);
 
     final menuItems = <PopupMenuEntry<String>>[
+      const PopupMenuItem(
+        value: 'app_settings',
+        child: Row(children: [
+          Icon(Icons.tune_outlined, size: 16),
+          SizedBox(width: 8),
+          Text('App settings'),
+        ]),
+      ),
+      const PopupMenuDivider(),
       const PopupMenuItem(
         value: 'add_services',
         child: Row(children: [
@@ -1228,15 +1246,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           Text('View history'),
         ]),
       ),
-      if (_globalIntervalEnabled)
-        const PopupMenuItem(
-          value: 'set_interval',
-          child: Row(children: [
-            Icon(Icons.schedule_outlined, size: 16),
-            SizedBox(width: 8),
-            Text('Set Check Interval'),
-          ]),
-        ),
       const PopupMenuDivider(),
       const PopupMenuItem(
         value: 'report_issue',
@@ -1275,22 +1284,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       appColor: appColor,
       subtitle:
-          '${services.length} service${services.length == 1 ? '' : 's'} monitored',
+          '${services.length} service${services.length == 1 ? '' : 's'} monitored • App restart ${appRestartEnabled ? 'on' : 'off'}',
       groupState: groupState,
       hasIssue: anyIssue,
       onGroupStateChanged: (state) => _setGroupState(pkg, services, state),
       menuItems: menuItems,
       onMenuSelected: (v) {
+        if (v == 'app_settings') _openAppSettings(pkg, appName, services);
         if (v == 'add_services') _addServiceForApp(pkg);
         if (v == 'restart_all') _restartAll(services);
         if (v == 'view_history') _viewAppHistory(pkg, appName);
-        if (v == 'set_interval') {
-          _showIntervalDialog(context, services.first.customIntervalMinutes)
-              .then((result) {
-            if (result == null) return;
-            _setAppInterval(services, result == -1 ? null : result);
-          });
-        }
         if (v == 'report_issue') _reportAppIssue(pkg, appName, services);
         if (v == 'remove_app') _removeApp(pkg, appName, services);
       },

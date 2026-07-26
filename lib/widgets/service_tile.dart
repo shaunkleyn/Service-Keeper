@@ -305,7 +305,7 @@ class _ServiceTileState extends State<ServiceTile> with WidgetsBindingObserver {
                           const SizedBox(width: 3),
                           Flexible(
                             child: Text(
-                              'Enable "Restart whole app" in Configure to recover this service.',
+                              'Enable app restart fallback in App settings to recover this service.',
                               style: theme.textTheme.bodySmall?.copyWith(
                                 fontSize: 10,
                                 color: theme.colorScheme.error.withValues(alpha: 0.8),
