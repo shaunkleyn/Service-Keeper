@@ -301,7 +301,7 @@ bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
                               appName,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
-                              softWrap: false,
+                              softWrap: true,
                               style: theme.textTheme.titleSmall?.copyWith(
                                 fontWeight: FontWeight.w700,
                                 color: fg,
