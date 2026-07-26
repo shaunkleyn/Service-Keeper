@@ -1,5 +1,4 @@
 import 'dart:typed_data';
-import 'package:animated_toggle_switch/animated_toggle_switch.dart';
 import 'package:flutter/material.dart';
 
 /// Sliver-based expandable app group card.
@@ -332,107 +331,129 @@ bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
   Widget _buildToggle(ThemeData theme, Color fg, Color bodyBg, {Color? appColor}) {
     final cs = theme.colorScheme;
     final current = groupState!;
+
+    final Color pillColor = switch (current) {
+      0 => Colors.transparent, // cs.error,
+      1 => hasIssue ? cs.errorContainer : cs.tertiary,
+      _ => cs.primary,
+    };
+    final Color onPill = switch (current) {
+      0 => cs.onError,
+      1 => hasIssue ? cs.onErrorContainer : cs.onTertiary,
+      _ => cs.onPrimary,
+    };
+
     final headerBg = appColor ?? cs.surfaceContainerLow;
-    final bool useDarkHeaderFg =
-        ThemeData.estimateBrightnessForColor(headerBg) == Brightness.dark;
+    final bool darkHeader = ThemeData.estimateBrightnessForColor(headerBg) == Brightness.dark;
+    final Color trackBg = appColor != null
+        ? (darkHeader ? Colors.white.withValues(alpha: 0.15) : Colors.black.withValues(alpha: 0.10))
+        : cs.surfaceContainerLow;
+    final Color borderColor = darkHeader
+        ? Colors.white.withValues(alpha: 0.40)
+        : Colors.black.withValues(alpha: current == 0 ? 0.5 : 0.22);
+    final Color dimColor = appColor != null
+        ? (darkHeader ? Colors.white.withValues(alpha: 0.50) : Colors.black.withValues(alpha: 0.38))
+        : cs.onSurfaceVariant.withValues(alpha: 0.6);
 
-    Color indicatorFor(int value, {Color? bg, Color? fg}) {
-      final Color color1;
-      switch (value) {
-        case 0:
-          color1 = current == 0
-              ? cs.error
-              : (bg ?? cs.surfaceContainerHighest);
-          break;
-        case 1:
-          color1 = hasIssue
-              ? cs.errorContainer
-              : (current == 1 ? cs.tertiary : (bg ?? cs.secondaryContainer));
-          break;
-        default:
-          color1 = (current == 2 ? cs.primary : (bg ?? cs.secondaryContainer));
-          break;
-      }
-      return color1;
-    }
+    final icons = [
+      current >= 1 ? Icons.check_circle_outline : Icons.block_outlined,
+      Icons.visibility,
+      Icons.notifications_active,
+    ];
+    const tooltips = ['Disabled', 'Monitor only', 'Monitor & notify'];
 
-    Widget iconFor(int value, {Color? bg, Color? fg}) {
-      final IconData icon;
-      final Color color;
-      final selected = current == value;
+    // Track geometry: pill and thumb are inset from the border by trackPad,
+    // producing the gap that makes the pill look like a thumb inside the track.
+    const totalWidth = 36.0 * 3;
+    const height = 34.0;
+    const trackPad = 1.0;
+    final thumbSize = height - (current == 0 ? 12.0 : 8.0 * trackPad);             // 28 — fills inner height
+    const slotWidth = (totalWidth - 2 * trackPad) / 3;  // 34 — inner slot width
+    final thumbLeft = trackPad + slotWidth * current + (slotWidth - thumbSize) / 2;
 
-      switch (value) {
-        case 0:
-          icon = Icons.block_outlined;
-          color = selected
-              ? cs.onError
-              : (useDarkHeaderFg ? Colors.white70 : Colors.black54);
-          break;
-        case 1:
-          icon = Icons.visibility;
-          color = selected
-              ? cs.onTertiary
-              : (useDarkHeaderFg ? Colors.white70 : Colors.black54);
-          break;
-        default:
-          icon = Icons.notifications;
-          color = selected
-              ? cs.onPrimary
-              : (useDarkHeaderFg ? Colors.white70 : Colors.black54);
-      }
-
-      return Icon(icon, size: 16, color: color);
-    }
-
-    String stateLabel(int value) {
-      switch (value) {
-        case 0:
-          return 'Disabled';
-        case 1:
-          return 'Monitor only';
-        default:
-          return 'Notify on issues';
-      }
-    }
-
-    return AnimatedToggleSwitch<int>.size(
-      current: current,
-      values: const [0, 1, 2],
-      height: 32,
-      indicatorSize: const Size(22, 22),
-      borderWidth: 2,
-      spacing: 10,
-      iconOpacity: 1.0,
-      selectedIconScale: 1.15,
-      loading: false,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      animationDuration: const Duration(milliseconds: 250),
-      style: ToggleStyle(
-        backgroundColor: appColor != null
-          ? fg.withValues(alpha: 0.22)
-          : cs.surfaceContainerLow,
-        borderColor: ThemeData.estimateBrightnessForColor(appColor ?? cs.surfaceContainerLow) ==
-                Brightness.dark
-            ? Colors.white24
-            : Colors.black26,
-        borderRadius: BorderRadius.circular(20),
-        indicatorBorderRadius: BorderRadius.circular(20),
-      ),
-      // styleBuilder: (value) => ToggleStyle(indicatorColor: indicatorFor(value, bg: appColor, fg: fg)),
-      styleBuilder: (value) => ToggleStyle(indicatorColor: indicatorFor(value, bg: appColor, fg: fg), ),
-      iconBuilder: (value) => Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: Tooltip(
-          message: stateLabel(value),
-          waitDuration: const Duration(milliseconds: 350),
-          child: Semantics(
-            label: stateLabel(value),
-            selected: current == value,
-            child: iconFor(value, bg: appColor, fg: appColor != null ? fg : null),
+    return SizedBox(
+      width: totalWidth,
+      height: height,
+      child: Stack(
+        children: [
+          // Track border + background
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                color: trackBg,
+                borderRadius: BorderRadius.circular(height / 2),
+                border: Border.all(color: borderColor, width: 1.5),
+              ),
+            ),
           ),
-        ),
+          // Growing fill pill — inset from track by trackPad on all sides
+          Positioned(
+            left: trackPad,
+            top: trackPad,
+            bottom: trackPad,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeInOut,
+              width: slotWidth * (current + 1),
+              decoration: BoxDecoration(
+                color: pillColor,
+                borderRadius: BorderRadius.circular(30),
+              ),
+            ),
+          ),
+          // Sliding thumb — white circle on top of pill
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeInOut,
+            left: thumbLeft,
+            top: height / 2 - thumbSize / 2,
+            child: Container(
+              width: thumbSize,
+              height: thumbSize,
+              decoration: BoxDecoration(
+                color: current == 0 ? Colors.black54 : Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: current > 0 ? Colors.black.withOpacity(0.22) : Colors.transparent,
+                    blurRadius: current == 0 ? 0 : 4,
+                    spreadRadius: current == 0 ? 0 : 1,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // Icons — span the inner area so each sits centered in its slot
+          Positioned(
+            left: trackPad, // slight nudge to center the first icon in the pill
+            top: 0,
+            right: trackPad,
+            bottom: 0,
+            child: Row(
+              children: List.generate(3, (i) => Tooltip(
+                message: tooltips[i],
+                waitDuration: const Duration(milliseconds: 350),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => onGroupStateChanged!(i),
+                  child: SizedBox(
+                    width: slotWidth,
+                    child: Icon(
+                      icons[i],
+                      size: 15,
+                      // on pill (not thumb): onPill; on thumb: pillColor on white; off: dim
+                      color: i < current || i == 0
+                          ? onPill
+                          : (i == current ? pillColor : dimColor),
+                    ),
+                  ),
+                ),
+              )),
+            ),
+          ),
+        ],
       ),
-      onChanged: onGroupStateChanged!,
     );
   }
 }
