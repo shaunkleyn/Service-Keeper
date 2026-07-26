@@ -69,7 +69,7 @@ class BackupService {
 
   static String encode(BackupData data) {
     return jsonEncode({
-      'version': currentVersion,
+'version': data.version,
       'exportedAt': data.exportedAt.toIso8601String(),
       'services': data.services.map((s) => s.toJson()).toList(),
       'a11yMonitoredKeys': data.a11yMonitoredKeys.toList(),
