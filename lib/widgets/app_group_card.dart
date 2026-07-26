@@ -91,7 +91,7 @@ class AppGroupCard extends StatelessWidget {
             isPartiallySelected: isPartiallySelected,
           ),
         ),
-        if (expanded && children.isNotEmpty)
+        if (children.isNotEmpty)
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -100,23 +100,35 @@ class AppGroupCard extends StatelessWidget {
                   bottomLeft: Radius.circular(12),
                   bottomRight: Radius.circular(12),
                 ),
-                child: ColoredBox(
-                  color: bodyBg,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (int i = 0; i < children.length; i++) ...[
-                        children[i],
-                        if (i < children.length - 1)
-                          Divider(
-                            height: 1,
-                            thickness: 1,
-                            color: theme.colorScheme.outlineVariant
-                                .withValues(alpha: 0.5),
-                          ),
+                child: AnimatedCrossFade(
+                  firstChild: const SizedBox.shrink(),
+                  secondChild: ColoredBox(
+                    color: bodyBg,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (int i = 0; i < children.length; i++) ...[
+                          children[i],
+                          if (i < children.length - 1)
+                            Divider(
+                              height: 1,
+                              thickness: 1,
+                              color: theme.colorScheme.outlineVariant
+                                  .withValues(alpha: 0.5),
+                            ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
+                  crossFadeState: expanded
+                      ? CrossFadeState.showSecond
+                      : CrossFadeState.showFirst,
+                  duration: const Duration(milliseconds: 260),
+                  reverseDuration: const Duration(milliseconds: 220),
+                  sizeCurve: Curves.easeInOutCubic,
+                  firstCurve: Curves.easeOut,
+                  secondCurve: Curves.easeIn,
+                  alignment: Alignment.topCenter,
                 ),
               ),
             ),
@@ -315,11 +327,7 @@ bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
                         elevation: 4,
                         
                       ),
-                    AnimatedRotation(
-                      turns: expanded ? 0.5 : 0,
-                      duration: const Duration(milliseconds: 200),
-                      child: Icon(Icons.expand_more, color: fg),
-                    ),
+                    _ExpandChevron(expanded: expanded, color: fg),
                   ],
                 ),
               ),
@@ -342,6 +350,55 @@ bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
       darkHeader: ThemeData.estimateBrightnessForColor(headerBg) == Brightness.dark,
       cs: cs,
       onChanged: onGroupStateChanged!,
+    );
+  }
+}
+
+class _ExpandChevron extends StatefulWidget {
+  final bool expanded;
+  final Color color;
+
+  const _ExpandChevron({required this.expanded, required this.color});
+
+  @override
+  State<_ExpandChevron> createState() => _ExpandChevronState();
+}
+
+class _ExpandChevronState extends State<_ExpandChevron>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 220),
+    reverseDuration: const Duration(milliseconds: 180),
+    value: widget.expanded ? 1 : 0,
+  );
+
+  late final Animation<double> _turns = Tween<double>(begin: 0, end: 0.5)
+      .animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOutCubic));
+
+  @override
+  void didUpdateWidget(covariant _ExpandChevron oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.expanded != oldWidget.expanded) {
+      if (widget.expanded) {
+        _controller.forward();
+      } else {
+        _controller.reverse();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RotationTransition(
+      turns: _turns,
+      child: Icon(Icons.expand_more, color: widget.color),
     );
   }
 }
@@ -399,10 +456,12 @@ class _GroupToggleState extends State<_GroupToggle> {
     final current = _current;
     final dragging = _dragState != null;
 
-    final bool darkColorful = cs.brightness == Brightness.dark && widget.appColor != null;
+    final bool colorful = widget.appColor != null;
+    final bool darkMode = cs.brightness == Brightness.dark;
+    final Color colorBase = darkMode ? const Color(0xFF1C1C1C) : Colors.white;
 
-    final Color state2Pill = darkColorful
-        ? Color.alphaBlend(widget.appColor!.withValues(alpha: 0.60), const Color(0xFF1C1C1C))
+    final Color state2Pill = colorful
+        ? Color.alphaBlend(widget.appColor!.withValues(alpha: 0.60), colorBase)
         : cs.primary;
 
     final Color pillColor = switch (current) {
@@ -410,7 +469,7 @@ class _GroupToggleState extends State<_GroupToggle> {
       1 => widget.hasIssue ? cs.errorContainer : state2Pill,
       _ => state2Pill,
     };
-    final Color activeOnPill = darkColorful
+    final Color activeOnPill = colorful
         ? (ThemeData.estimateBrightnessForColor(state2Pill) == Brightness.dark
             ? Colors.white
             : Colors.black87)
@@ -420,12 +479,12 @@ class _GroupToggleState extends State<_GroupToggle> {
       1 => widget.hasIssue ? cs.onErrorContainer : activeOnPill,
       _ => activeOnPill,
     };
-    final Color trackBg = widget.appColor != null
+    final Color trackBg = colorful
         ? (widget.darkHeader
             ? Colors.white.withValues(alpha: 0.15)
             : Colors.black.withValues(alpha: 0.10))
         : cs.surfaceContainerLow;
-    final Color borderColor = (cs.brightness == Brightness.dark && widget.appColor != null)
+    final Color borderColor = colorful
         ? widget.bodyBg
         : (widget.darkHeader
             ? Colors.white.withValues(alpha: 0.40)
@@ -500,12 +559,12 @@ class _GroupToggleState extends State<_GroupToggle> {
                 height: thumbSize,
                 decoration: BoxDecoration(
                   color: current == 0
-                      ? (cs.brightness == Brightness.dark
-                          ? (widget.appColor != null ? widget.bodyBg : const Color(0xFF4E5057))
-                          : Colors.black54)
-                      : (cs.brightness == Brightness.dark
-                          ? (darkColorful ? widget.appColor! : cs.onPrimary)
-                          : Colors.white),
+                      ? (colorful
+                          ? widget.bodyBg
+                          : (darkMode ? const Color(0xFF4E5057) : Colors.black54))
+                      : (colorful
+                          ? widget.appColor!
+                          : (darkMode ? cs.onPrimary : Colors.white)),
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
@@ -538,7 +597,7 @@ class _GroupToggleState extends State<_GroupToggle> {
                         : (i < current || i == 0
                             ? onPill
                             : (i == current
-                                ? (darkColorful && current >= 1
+                                ? (colorful && current >= 1
                                     ? (ThemeData.estimateBrightnessForColor(widget.appColor!) == Brightness.dark
                                         ? Colors.white
                                         : Colors.black87)
