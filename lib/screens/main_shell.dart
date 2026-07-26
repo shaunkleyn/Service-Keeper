@@ -270,7 +270,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     return PageBanner(
       pref: 'app_restart_tip_dismissed',
       dismissed: false,
-      text: "Tip: If a service can't be started directly, enable \"Restart whole app\" in its Configure menu to launch the app instead.",
+      text: 'Tip: If a service can\'t be started directly, enable app restart fallback in App settings to launch the app instead.',
 
       onDismiss: () async {
             final prefs = await SharedPreferences.getInstance();
