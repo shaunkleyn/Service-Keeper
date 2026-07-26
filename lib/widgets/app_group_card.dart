@@ -103,35 +103,31 @@ class AppGroupCard extends StatelessWidget {
                   bottomLeft: Radius.circular(12),
                   bottomRight: Radius.circular(12),
                 ),
-                child: AnimatedCrossFade(
-                  firstChild: const SizedBox.shrink(),
-                  secondChild: ColoredBox(
-                    color: bodyBg,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        for (int i = 0; i < children.length; i++) ...[
-                          children[i],
-                          if (i < children.length - 1)
-                            Divider(
-                              height: 1,
-                              thickness: 1,
-                              color: theme.colorScheme.outlineVariant
-                                  .withValues(alpha: 0.5),
-                            ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  crossFadeState: expanded
-                      ? CrossFadeState.showSecond
-                      : CrossFadeState.showFirst,
+                child: AnimatedSize(
                   duration: const Duration(milliseconds: 260),
                   reverseDuration: const Duration(milliseconds: 220),
-                  sizeCurve: Curves.easeInOutCubic,
-                  firstCurve: Curves.easeOut,
-                  secondCurve: Curves.easeIn,
+                  curve: Curves.easeInOutCubic,
                   alignment: Alignment.topCenter,
+                  child: expanded
+                      ? ColoredBox(
+                          color: bodyBg,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              for (int i = 0; i < children.length; i++) ...[
+                                children[i],
+                                if (i < children.length - 1)
+                                  Divider(
+                                    height: 1,
+                                    thickness: 1,
+                                    color: theme.colorScheme.outlineVariant
+                                        .withValues(alpha: 0.5),
+                                  ),
+                              ],
+                            ],
+                          ),
+                        )
+                      : const SizedBox.shrink(),
                 ),
               ),
             ),
