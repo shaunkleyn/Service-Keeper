@@ -348,7 +348,6 @@ bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
                         onSelected: onMenuSelected,
                         itemBuilder: (_) => menuItems,
                         elevation: 4,
-                        
                       ),
                     _ExpandChevron(expanded: expanded, color: fg),
                   ],
