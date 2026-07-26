@@ -483,7 +483,13 @@ class _GroupToggleState extends State<_GroupToggle> {
                 width: thumbSize,
                 height: thumbSize,
                 decoration: BoxDecoration(
-                  color: current == 0 ? Colors.black54 : Colors.white,
+                  color: current == 0
+                      ? (cs.brightness == Brightness.dark
+                          ? const Color(0xFF4E5057)
+                          : Colors.black54)
+                      : (cs.brightness == Brightness.dark
+                          ? cs.onPrimary
+                          : Colors.white),
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
@@ -509,9 +515,13 @@ class _GroupToggleState extends State<_GroupToggle> {
                   child: Icon(
                     icons[i],
                     size: 15,
-                    color: i < current || i == 0
-                        ? onPill
-                        : (i == current ? pillColor : dimColor),
+                    color: (current == 0 && i == 0)
+                        ? (cs.brightness == Brightness.dark
+                            ? const Color(0xFF80828A)
+                            : Colors.black45)
+                        : (i < current || i == 0
+                            ? onPill
+                            : (i == current ? pillColor : dimColor)),
                   ),
                 )),
               ),
