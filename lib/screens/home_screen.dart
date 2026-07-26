@@ -1520,7 +1520,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       _isInSelectionMode ? null : () => _removeService(s),
                   onRestartNow:
                       _isInSelectionMode ? null : () => _restartNow(s),
-                  onCheckDue: () => _checkDue(s),
+                  onCheckDue: null,
                   onToggleNotifications: _isInSelectionMode
                       ? null
                       : () => _toggleServiceNotification(s),
