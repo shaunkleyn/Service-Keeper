@@ -50,6 +50,7 @@ void main() async {
 
   final prefs = await SharedPreferences.getInstance();
   materialYouNotifier.value = prefs.getBool('use_material_you') ?? false;
+  colorfulCardsNotifier.value = prefs.getBool('use_app_colors') ?? false;
 
   if (materialYouNotifier.value) {
     wallpaperSeedNotifier.value = await AppInfoService.getWallpaperSeedColor();

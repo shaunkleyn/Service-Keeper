@@ -270,7 +270,7 @@ bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
                                     color: fg.withValues(alpha: 0.5), size: 20)),
                       ),
                     avatar,
-                    const SizedBox(width: 16),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -281,7 +281,7 @@ bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
                             waitDuration: const Duration(milliseconds: 350),
                             child: Text(
                               appName,
-                              maxLines: 1,
+                              maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               softWrap: false,
                               style: theme.textTheme.titleSmall?.copyWith(
@@ -292,11 +292,11 @@ bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
                           ),
                           Text(
                             subtitle,
-                            maxLines: 1,
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             softWrap: false,
                             style: theme.textTheme.bodySmall?.copyWith(
-                              fontSize: 12,
+                              fontSize: 11,
                               color: headerFg?.withValues(alpha: 0.75) ??
                                   theme.colorScheme.onSurfaceVariant,
                             ),
@@ -312,6 +312,8 @@ bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
                         padding: EdgeInsets.zero,
                         onSelected: onMenuSelected,
                         itemBuilder: (_) => menuItems,
+                        elevation: 4,
+                        
                       ),
                     AnimatedRotation(
                       turns: expanded ? 0.5 : 0,
@@ -330,29 +332,92 @@ bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
 
   Widget _buildToggle(ThemeData theme, Color fg, Color bodyBg, {Color? appColor}) {
     final cs = theme.colorScheme;
-    final current = groupState!;
+    final headerBg = appColor ?? cs.surfaceContainerLow;
+    return _GroupToggle(
+      value: groupState!,
+      hasIssue: hasIssue,
+      appColor: appColor,
+      fg: fg,
+      darkHeader: ThemeData.estimateBrightnessForColor(headerBg) == Brightness.dark,
+      cs: cs,
+      onChanged: onGroupStateChanged!,
+    );
+  }
+}
+
+class _GroupToggle extends StatefulWidget {
+  final int value;
+  final bool hasIssue;
+  final Color? appColor;
+  final Color fg;
+  final bool darkHeader;
+  final ColorScheme cs;
+  final void Function(int) onChanged;
+
+  const _GroupToggle({
+    required this.value,
+    required this.hasIssue,
+    this.appColor,
+    required this.fg,
+    required this.darkHeader,
+    required this.cs,
+    required this.onChanged,
+  });
+
+  @override
+  State<_GroupToggle> createState() => _GroupToggleState();
+}
+
+class _GroupToggleState extends State<_GroupToggle> {
+  int? _dragState;
+
+  static const _totalWidth = 32.0 * 3;
+  static const _height = 32.0;
+  static const _trackPad = 1.0;
+  static const _slotWidth = (_totalWidth - 2 * _trackPad) / 3;
+
+  int get _current => _dragState ?? widget.value;
+
+  double _thumbSize(int state) => _height - (state == 0 ? 12.0 : 8.0 * _trackPad);
+
+  double _thumbLeft(int state) {
+    final ts = _thumbSize(state);
+    return _trackPad + _slotWidth * state + (_slotWidth - ts) / 2;
+  }
+
+  int _slotAt(double localX) {
+    final inner = (localX - _trackPad).clamp(0.0, _totalWidth - 2 * _trackPad - 0.001);
+    return (inner / _slotWidth).floor().clamp(0, 2);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = widget.cs;
+    final current = _current;
+    final dragging = _dragState != null;
 
     final Color pillColor = switch (current) {
-      0 => Colors.transparent, // cs.error,
-      1 => hasIssue ? cs.errorContainer : cs.tertiary,
+      0 => Colors.transparent,
+      1 => widget.hasIssue ? cs.errorContainer : cs.tertiary,
       _ => cs.primary,
     };
     final Color onPill = switch (current) {
       0 => cs.onError,
-      1 => hasIssue ? cs.onErrorContainer : cs.onTertiary,
+      1 => widget.hasIssue ? cs.onErrorContainer : cs.onTertiary,
       _ => cs.onPrimary,
     };
-
-    final headerBg = appColor ?? cs.surfaceContainerLow;
-    final bool darkHeader = ThemeData.estimateBrightnessForColor(headerBg) == Brightness.dark;
-    final Color trackBg = appColor != null
-        ? (darkHeader ? Colors.white.withValues(alpha: 0.15) : Colors.black.withValues(alpha: 0.10))
+    final Color trackBg = widget.appColor != null
+        ? (widget.darkHeader
+            ? Colors.white.withValues(alpha: 0.15)
+            : Colors.black.withValues(alpha: 0.10))
         : cs.surfaceContainerLow;
-    final Color borderColor = darkHeader
+    final Color borderColor = widget.darkHeader
         ? Colors.white.withValues(alpha: 0.40)
         : Colors.black.withValues(alpha: current == 0 ? 0.5 : 0.22);
-    final Color dimColor = appColor != null
-        ? (darkHeader ? Colors.white.withValues(alpha: 0.50) : Colors.black.withValues(alpha: 0.38))
+    final Color dimColor = widget.appColor != null
+        ? (widget.darkHeader
+            ? Colors.white.withValues(alpha: 0.50)
+            : Colors.black.withValues(alpha: 0.38))
         : cs.onSurfaceVariant.withValues(alpha: 0.6);
 
     final icons = [
@@ -360,99 +425,99 @@ bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
       Icons.visibility,
       Icons.notifications_active,
     ];
-    const tooltips = ['Disabled', 'Monitor only', 'Monitor & notify'];
 
-    // Track geometry: pill and thumb are inset from the border by trackPad,
-    // producing the gap that makes the pill look like a thumb inside the track.
-    const totalWidth = 36.0 * 3;
-    const height = 34.0;
-    const trackPad = 1.0;
-    final thumbSize = height - (current == 0 ? 12.0 : 8.0 * trackPad);             // 28 — fills inner height
-    const slotWidth = (totalWidth - 2 * trackPad) / 3;  // 34 — inner slot width
-    final thumbLeft = trackPad + slotWidth * current + (slotWidth - thumbSize) / 2;
+    final thumbSize = _thumbSize(current);
+    final thumbLeft = _thumbLeft(current);
+    final dur = dragging ? Duration.zero : const Duration(milliseconds: 250);
 
-    return SizedBox(
-      width: totalWidth,
-      height: height,
-      child: Stack(
-        children: [
-          // Track border + background
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                color: trackBg,
-                borderRadius: BorderRadius.circular(height / 2),
-                border: Border.all(color: borderColor, width: 1.5),
-              ),
-            ),
-          ),
-          // Growing fill pill — inset from track by trackPad on all sides
-          Positioned(
-            left: trackPad,
-            top: trackPad,
-            bottom: trackPad,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.easeInOut,
-              width: slotWidth * (current + 1),
-              decoration: BoxDecoration(
-                color: pillColor,
-                borderRadius: BorderRadius.circular(30),
-              ),
-            ),
-          ),
-          // Sliding thumb — white circle on top of pill
-          AnimatedPositioned(
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeInOut,
-            left: thumbLeft,
-            top: height / 2 - thumbSize / 2,
-            child: Container(
-              width: thumbSize,
-              height: thumbSize,
-              decoration: BoxDecoration(
-                color: current == 0 ? Colors.black54 : Colors.white,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: current > 0 ? Colors.black.withOpacity(0.22) : Colors.transparent,
-                    blurRadius: current == 0 ? 0 : 4,
-                    spreadRadius: current == 0 ? 0 : 1,
-                    offset: const Offset(0, 1),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          // Icons — span the inner area so each sits centered in its slot
-          Positioned(
-            left: trackPad, // slight nudge to center the first icon in the pill
-            top: 0,
-            right: trackPad,
-            bottom: 0,
-            child: Row(
-              children: List.generate(3, (i) => Tooltip(
-                message: tooltips[i],
-                waitDuration: const Duration(milliseconds: 350),
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => onGroupStateChanged!(i),
-                  child: SizedBox(
-                    width: slotWidth,
-                    child: Icon(
-                      icons[i],
-                      size: 15,
-                      // on pill (not thumb): onPill; on thumb: pillColor on white; off: dim
-                      color: i < current || i == 0
-                          ? onPill
-                          : (i == current ? pillColor : dimColor),
-                    ),
-                  ),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      // Tap: determine slot from touch position, commit immediately.
+      onTapUp: (d) => widget.onChanged(_slotAt(d.localPosition.dx)),
+      // Drag: snap thumb to each slot as finger moves, commit on release.
+      onHorizontalDragUpdate: (d) {
+        final s = _slotAt(d.localPosition.dx);
+        if (s != _dragState) setState(() => _dragState = s);
+      },
+      onHorizontalDragEnd: (_) {
+        final s = _dragState ?? widget.value;
+        setState(() => _dragState = null);
+        widget.onChanged(s);
+      },
+      onHorizontalDragCancel: () => setState(() => _dragState = null),
+      child: SizedBox(
+        width: _totalWidth,
+        height: _height,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: trackBg,
+                  borderRadius: BorderRadius.circular(_height / 2),
+                  border: Border.all(color: borderColor, width: 1.5),
                 ),
-              )),
+              ),
             ),
-          ),
-        ],
+            Positioned(
+              left: _trackPad,
+              top: _trackPad,
+              bottom: _trackPad,
+              child: AnimatedContainer(
+                duration: dur,
+                curve: Curves.easeInOut,
+                width: _slotWidth * (current + 1),
+                decoration: BoxDecoration(
+                  color: pillColor,
+                  borderRadius: BorderRadius.circular(30),
+                ),
+              ),
+            ),
+            AnimatedPositioned(
+              duration: dur,
+              curve: Curves.easeInOut,
+              left: thumbLeft,
+              top: _height / 2 - thumbSize / 2,
+              child: AnimatedContainer(
+                duration: dur,
+                width: thumbSize,
+                height: thumbSize,
+                decoration: BoxDecoration(
+                  color: current == 0 ? Colors.black54 : Colors.white,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: current > 0
+                          ? Colors.black.withValues(alpha: 0.22)
+                          : Colors.transparent,
+                      blurRadius: current == 0 ? 0 : 4,
+                      spreadRadius: current == 0 ? 0 : 1,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Positioned(
+              left: _trackPad,
+              top: 0,
+              right: _trackPad,
+              bottom: 0,
+              child: Row(
+                children: List.generate(3, (i) => SizedBox(
+                  width: _slotWidth,
+                  child: Icon(
+                    icons[i],
+                    size: 15,
+                    color: i < current || i == 0
+                        ? onPill
+                        : (i == current ? pillColor : dimColor),
+                  ),
+                )),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

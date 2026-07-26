@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
+import '../app_settings_notifier.dart';
 import '../models/monitored_service.dart';
 import '../models/audit_event.dart';
 import '../services/service_manager.dart';
@@ -90,6 +91,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final _expandedGroups = <String, bool>{};
   final _restartingServices = <String>{};
   final _selectedServices = <String>{};
+  final _checkingServices = <String>{};
   Timer? _clockTimer;
   DateTime _now = DateTime.now();
   bool get _isInSelectionMode => _selectedServices.isNotEmpty;
@@ -98,6 +100,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    colorfulCardsNotifier.addListener(_onColorfulCardsChanged);
     _startClockTicker();
     _manager = ServiceManager(_shizuku);
     widget.onRegister(
@@ -111,9 +114,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    colorfulCardsNotifier.removeListener(_onColorfulCardsChanged);
     WidgetsBinding.instance.removeObserver(this);
     _stopClockTicker();
     super.dispose();
+  }
+
+  void _onColorfulCardsChanged() {
+    if (!mounted) return;
+    setState(() => _useAppColors = colorfulCardsNotifier.value);
+    if (_useAppColors) _generateAppColors();
   }
 
   @override
@@ -141,7 +151,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       setState(() => _now = DateTime.now());
+      _checkOverdueServices();
     });
+  }
+
+  void _checkOverdueServices() {
+    if (widget.shizukuStatus != ShizukuStatus.ready) return;
+    if (!_globalIntervalEnabled) return;
+    for (final s in _services) {
+      if (!s.enabled || s.lastChecked == null) continue;
+      final key = '${s.packageName}/${s.serviceClass}';
+      if (_checkingServices.contains(key)) continue;
+      final elapsed = _now.difference(s.lastChecked!).inSeconds;
+      if (elapsed >= _effectiveInterval(s) * 60) {
+        _checkingServices.add(key);
+        _checkDue(s).whenComplete(() => _checkingServices.remove(key));
+      }
+    }
   }
 
   void _stopClockTicker() {
