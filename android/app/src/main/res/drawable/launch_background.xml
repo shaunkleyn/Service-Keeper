@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@color/launch_screen_bg" />
+    <item android:drawable="@drawable/splash_bg" />
+    <item android:drawable="@drawable/splash_glow" />
+    <item
+        android:width="170dp"
+        android:height="170dp"
+        android:gravity="center"
+        android:drawable="@drawable/launch_logo" />
 </layer-list>

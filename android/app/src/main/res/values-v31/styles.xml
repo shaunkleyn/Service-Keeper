@@ -2,13 +2,14 @@
 <resources>
     <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
         <item name="android:forceDarkAllowed">false</item>
-        <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:windowBackground">@color/launch_screen_bg</item>
         <item name="android:windowSplashScreenBackground">@color/launch_screen_bg</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_blank</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/launch_screen_bg</item>
     </style>
 
     <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
         <item name="android:forceDarkAllowed">false</item>
-        <item name="android:windowBackground">?android:colorBackground</item>
+        <item name="android:windowBackground">@color/launch_screen_bg</item>
     </style>
 </resources>

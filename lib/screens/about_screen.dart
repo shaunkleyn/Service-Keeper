@@ -31,13 +31,18 @@ class _AboutScreenState extends State<AboutScreen> {
         children: [
           Center(
             child: Container(
-              width: 96,
-              height: 96,
+              width: 100,
+              height: 100,
               decoration: BoxDecoration(
-                color: cs.primaryContainer,
+                gradient: const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFF1E9880), Color(0xFF0D6658)],
+                ),
                 borderRadius: BorderRadius.circular(24),
               ),
-              child: Icon(Icons.shield_outlined, size: 56, color: cs.onPrimaryContainer),
+              padding: const EdgeInsets.all(16),
+              child: Image.asset('lib/assets/logo-white-no-bg.png'),
             ),
           ),
           const SizedBox(height: 16),

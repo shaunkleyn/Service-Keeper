@@ -5,7 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 import 'app_settings_notifier.dart';
-import 'screens/main_shell.dart';
+import 'screens/splash_screen.dart';
 import 'services/app_info_service.dart';
 
 @pragma('vm:entry-point')
@@ -119,7 +119,7 @@ class ServiceKeeperApp extends StatelessWidget {
               debugShowCheckedModeBanner: false,
               theme: _buildLight(useMY ? lightDynamic : null, useMY ? seed : null),
               darkTheme: _buildDark(useMY ? darkDynamic : null, useMY ? seed : null),
-              home: const MainShell(),
+              home: const SplashScreen(),
             );
           },
         );
