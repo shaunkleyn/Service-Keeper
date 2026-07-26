@@ -90,12 +90,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final _expandedGroups = <String, bool>{};
   final _restartingServices = <String>{};
   final _selectedServices = <String>{};
+  Timer? _clockTimer;
+  DateTime _now = DateTime.now();
   bool get _isInSelectionMode => _selectedServices.isNotEmpty;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _startClockTicker();
     _manager = ServiceManager(_shizuku);
     widget.onRegister(
       refresh: _reload,
@@ -109,6 +112,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _stopClockTicker();
     super.dispose();
   }
 
@@ -121,9 +125,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      _now = DateTime.now();
+      _startClockTicker();
       _loadColorPreference();
       _loadServices();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.inactive) {
+      _stopClockTicker();
     }
+  }
+
+  void _startClockTicker() {
+    _clockTimer?.cancel();
+    _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() => _now = DateTime.now());
+    });
+  }
+
+  void _stopClockTicker() {
+    _clockTimer?.cancel();
+    _clockTimer = null;
   }
 
   Future<void> _init() async {
@@ -1332,6 +1355,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         services: services,
         globalIntervalMinutes: _defaultIntervalMinutes,
         globalIntervalEnabled: _globalIntervalEnabled,
+        now: _now,
       ),
       appColor: appColor,
       subtitle:
@@ -1353,8 +1377,57 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       isSelected: _isAppSelected(services),
       isPartiallySelected: _isAppPartiallySelected(services),
       children: [
+        _buildAppModeLegend(context, groupState),
         for (final s in services) _buildServiceRow(context, pkg, s, appColor),
       ],
+    );
+  }
+
+  Widget _buildAppModeLegend(BuildContext context, int groupState) {
+    final cs = Theme.of(context).colorScheme;
+
+    Widget item(int value, String label, Color activeBg, Color activeFg) {
+      final selected = groupState == value;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: selected ? activeBg : cs.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: selected ? activeBg : cs.outlineVariant,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: selected ? activeFg : cs.onSurfaceVariant,
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+      child: Row(
+        children: [
+          item(0, 'Disabled', cs.errorContainer, cs.onErrorContainer),
+          const SizedBox(width: 6),
+          item(1, 'Monitor', cs.tertiaryContainer, cs.onTertiaryContainer),
+          const SizedBox(width: 6),
+          item(2, 'Notify', cs.primaryContainer, cs.onPrimaryContainer),
+          const Spacer(),
+          Text(
+            'Mode',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: cs.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1397,6 +1470,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               Expanded(
                 child: ServiceTile(
                   service: s,
+                  now: _now,
                   showLeading: false,
                   accentColor: appColor,
                   globalIntervalEnabled: _globalIntervalEnabled,
@@ -1473,6 +1547,7 @@ class _AppIconWithRings extends StatefulWidget {
   final List<MonitoredService> services;
   final int globalIntervalMinutes;
   final bool globalIntervalEnabled;
+  final DateTime now;
 
   const _AppIconWithRings({
     required this.packageName,
@@ -1482,60 +1557,14 @@ class _AppIconWithRings extends StatefulWidget {
     required this.services,
     required this.globalIntervalMinutes,
     required this.globalIntervalEnabled,
+    required this.now,
   });
 
   @override
   State<_AppIconWithRings> createState() => _AppIconWithRingsState();
 }
 
-class _AppIconWithRingsState extends State<_AppIconWithRings>
-    with WidgetsBindingObserver {
-  Timer? _timer;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _startTimer();
-  }
-
-  @override
-  void didUpdateWidget(_AppIconWithRings old) {
-    super.didUpdateWidget(old);
-    _startTimer();
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _startTimer();
-    } else if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.hidden ||
-        state == AppLifecycleState.inactive) {
-      _timer?.cancel();
-      _timer = null;
-    }
-  }
-
-  void _startTimer() {
-    _timer?.cancel();
-    final hasTracked = widget.globalIntervalEnabled &&
-        widget.services.any((s) => s.enabled && s.lastChecked != null);
-    if (hasTracked) {
-      _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (mounted) setState(() {});
-      });
-    } else {
-      _timer = null;
-    }
-  }
+class _AppIconWithRingsState extends State<_AppIconWithRings> {
 
   int _effectiveInterval(MonitoredService s) =>
       s.customIntervalMinutes ?? widget.globalIntervalMinutes;
@@ -1546,7 +1575,7 @@ class _AppIconWithRingsState extends State<_AppIconWithRings>
     if (relevant.isEmpty) return 1.0;
     double minProgress = 1.0;
     for (final s in relevant) {
-      final elapsed = DateTime.now().difference(s.lastChecked!).inSeconds;
+      final elapsed = widget.now.difference(s.lastChecked!).inSeconds;
       final total = intervalMinutes * 60;
       final p = total <= 0 ? 0.0 : ((total - elapsed) / total).clamp(0.0, 1.0);
       if (p < minProgress) minProgress = p;
@@ -1579,13 +1608,37 @@ class _AppIconWithRingsState extends State<_AppIconWithRings>
 
     if (!widget.globalIntervalEnabled) return avatar;
 
+    final hasEnabled = widget.services.any((s) => s.enabled);
     final tracked = widget.services
         .where((s) => s.enabled && s.lastChecked != null)
         .toList();
     final uniqueIntervals =
         tracked.map(_effectiveInterval).toSet().toList()..sort();
 
-    if (uniqueIntervals.isEmpty) return avatar;
+    if (uniqueIntervals.isEmpty) {
+      if (!hasEnabled) return avatar;
+      return SizedBox(
+        width: 44,
+        height: 44,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            SizedBox(
+              width: 43,
+              height: 43,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                strokeCap: StrokeCap.round,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  theme.colorScheme.tertiary.withValues(alpha: 0.75),
+                ),
+              ),
+            ),
+            avatar,
+          ],
+        ),
+      );
+    }
 
     final opacity = 1.0 / uniqueIntervals.length;
 
@@ -1611,8 +1664,9 @@ class _AppIconWithRingsState extends State<_AppIconWithRings>
               height: 43,
               child: CircularProgressIndicator(
                 value: progress,
-                strokeWidth: 3,
-                backgroundColor: Colors.transparent,
+                strokeWidth: 3.5,
+                strokeCap: StrokeCap.round,
+                backgroundColor: ringColor.withValues(alpha: 0.18),
                 valueColor: AlwaysStoppedAnimation<Color>(ringColor),
               ),
             );

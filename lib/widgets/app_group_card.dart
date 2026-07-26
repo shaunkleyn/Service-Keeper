@@ -184,8 +184,7 @@ bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
     icon != old.icon ||
     isInSelectionMode != old.isInSelectionMode ||
     isSelected != old.isSelected ||
-    isPartiallySelected != old.isPartiallySelected ||
-    menuItems != old.menuItems;
+    isPartiallySelected != old.isPartiallySelected;
 
   @override
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
@@ -278,15 +277,25 @@ bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            appName,
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              color: fg,
+                          Tooltip(
+                            message: appName,
+                            waitDuration: const Duration(milliseconds: 350),
+                            child: Text(
+                              appName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              softWrap: false,
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: fg,
+                              ),
                             ),
                           ),
                           Text(
                             subtitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            softWrap: false,
                             style: theme.textTheme.bodySmall?.copyWith(
                               fontSize: 12,
                               color: headerFg?.withValues(alpha: 0.75) ??
@@ -323,18 +332,25 @@ bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
   Widget _buildToggle(ThemeData theme, Color fg, Color bodyBg, {Color? appColor}) {
     final cs = theme.colorScheme;
     final current = groupState!;
+    final headerBg = appColor ?? cs.surfaceContainerLow;
+    final bool useDarkHeaderFg =
+        ThemeData.estimateBrightnessForColor(headerBg) == Brightness.dark;
 
     Color indicatorFor(int value, {Color? bg, Color? fg}) {
       final Color color1;
       switch (value) {
         case 0:
-          color1 = current == 0 ? bg ?? cs.outlineVariant : fg ?? cs.secondaryContainer;
+          color1 = current == 0
+              ? cs.error
+              : (bg ?? cs.surfaceContainerHighest);
           break;
         case 1:
-          color1 = hasIssue ? cs.errorContainer : (current >= 1 ?  cs.secondaryContainer : bg ?? cs.secondaryContainer);
+          color1 = hasIssue
+              ? cs.errorContainer
+              : (current == 1 ? cs.tertiary : (bg ?? cs.secondaryContainer));
           break;
         default:
-          color1 = (current >= 2 ? cs.secondaryContainer : fg ?? cs.secondaryContainer);
+          color1 = (current == 2 ? cs.primary : (bg ?? cs.secondaryContainer));
           break;
       }
       return color1;
@@ -343,40 +359,58 @@ bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
     Widget iconFor(int value, {Color? bg, Color? fg}) {
       final IconData icon;
       final Color color;
+      final selected = current == value;
 
-switch (value) {
-  case 0:
-    icon = current == 0 ? Icons.block_outlined : Icons.check_circle;
-    color = current == 0 ? fg ?? cs.onSurfaceVariant : fg ?? Colors.green;
-    break;
-  case 1:
-    icon = current >= 1 ? Icons.visibility : Icons.visibility_off;
-    color = current >= 1 ? fg ?? Colors.green : bg ?? cs.onSurfaceVariant;
-    break;
-  default:
-    icon = current >= 2 ? Icons.notifications : Icons.notifications_off;
-    color = current >= 2 ? fg ?? Colors.green : bg ?? cs.onSurfaceVariant;
-}
+      switch (value) {
+        case 0:
+          icon = Icons.block_outlined;
+          color = selected
+              ? cs.onError
+              : (useDarkHeaderFg ? Colors.white70 : Colors.black54);
+          break;
+        case 1:
+          icon = Icons.visibility;
+          color = selected
+              ? cs.onTertiary
+              : (useDarkHeaderFg ? Colors.white70 : Colors.black54);
+          break;
+        default:
+          icon = Icons.notifications;
+          color = selected
+              ? cs.onPrimary
+              : (useDarkHeaderFg ? Colors.white70 : Colors.black54);
+      }
 
       return Icon(icon, size: 16, color: color);
+    }
+
+    String stateLabel(int value) {
+      switch (value) {
+        case 0:
+          return 'Disabled';
+        case 1:
+          return 'Monitor only';
+        default:
+          return 'Notify on issues';
+      }
     }
 
     return AnimatedToggleSwitch<int>.size(
       current: current,
       values: const [0, 1, 2],
       height: 32,
-      indicatorSize: const Size(20, 20),
+      indicatorSize: const Size(22, 22),
       borderWidth: 2,
       spacing: 10,
       iconOpacity: 1.0,
-      selectedIconScale: 1.0,
+      selectedIconScale: 1.15,
       loading: false,
       padding: const EdgeInsets.symmetric(horizontal: 8),
       animationDuration: const Duration(milliseconds: 250),
       style: ToggleStyle(
         backgroundColor: appColor != null
-            ? fg.withValues(alpha: 0.3)
-            : cs.surfaceContainerLow,
+          ? fg.withValues(alpha: 0.22)
+          : cs.surfaceContainerLow,
         borderColor: ThemeData.estimateBrightnessForColor(appColor ?? cs.surfaceContainerLow) ==
                 Brightness.dark
             ? Colors.white24
@@ -388,7 +422,15 @@ switch (value) {
       styleBuilder: (value) => ToggleStyle(indicatorColor: indicatorFor(value, bg: appColor, fg: fg), ),
       iconBuilder: (value) => Padding(
         padding: const EdgeInsets.only(top: 8),
-        child: iconFor(value, bg: appColor, fg: appColor != null ? fg : null),
+        child: Tooltip(
+          message: stateLabel(value),
+          waitDuration: const Duration(milliseconds: 350),
+          child: Semantics(
+            label: stateLabel(value),
+            selected: current == value,
+            child: iconFor(value, bg: appColor, fg: appColor != null ? fg : null),
+          ),
+        ),
       ),
       onChanged: onGroupStateChanged!,
     );
