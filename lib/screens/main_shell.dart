@@ -42,9 +42,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   Timer? _durationTimer;
   bool _batteryExempt = true;
   bool _notificationPermissionGranted = true;
-  bool _appRestartTipDismissed = false;
-  bool _monitoringExplainerDismissed = false;
-  bool _toggleExplainerDismissed = false;
+  bool? _appRestartTipDismissed;
+  bool? _monitoringExplainerDismissed;
+  bool? _toggleExplainerDismissed;
 
   final _refreshCallbacks = <int, VoidCallback>{};
   VoidCallback? _runMonitorNow;
@@ -100,16 +100,11 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   }
 
   Future<void> _init() async {
+    await _reloadBannerStates();
     await _checkShizuku();
     await _checkBatteryOptimization();
     await _checkNotificationPermission();
     await _loadIntervalSetting();
-    final prefs = await SharedPreferences.getInstance();
-    if (mounted) setState(() {
-      _appRestartTipDismissed = prefs.getBool('app_restart_tip_dismissed') ?? false;
-      _monitoringExplainerDismissed = prefs.getBool('monitoring_explainer_dismissed') ?? false;
-      _toggleExplainerDismissed = prefs.getBool('toggle_explainer_dismissed') ?? false;
-    });
   }
 
   Future<void> _loadIntervalSetting() async {
@@ -244,9 +239,10 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   }
 
   Widget _buildMonitoringExplainerBanner() {
+    if (_monitoringExplainerDismissed != false) return const SizedBox.shrink();
     return PageBanner(
       pref: 'monitoring_explainer_dismissed',
-      dismissed: _monitoringExplainerDismissed,
+      dismissed: false,
       text:
             'Service Keeper runs a persistent background watcher that reads Android\'s activity log in real time. '
           'The moment a monitored service stops Service Keeper detects it and restarts it straight away. '
@@ -269,10 +265,11 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   }
 
   Widget _buildAppRestartTipBanner() {
+    if (_appRestartTipDismissed != false) return const SizedBox.shrink();
     final cs = Theme.of(context).colorScheme;
     return PageBanner(
       pref: 'app_restart_tip_dismissed',
-      dismissed: _appRestartTipDismissed,
+      dismissed: false,
       text: "Tip: If a service can't be started directly, enable \"Restart whole app\" in its Configure menu to launch the app instead.",
 
       onDismiss: () async {
@@ -291,7 +288,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   }
 
   Widget _buildToggleExplainerBanner() {
-    if (_toggleExplainerDismissed) return const SizedBox.shrink();
+    if (_toggleExplainerDismissed != false) return const SizedBox.shrink();
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
 
