@@ -337,6 +337,7 @@ bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
       value: groupState!,
       hasIssue: hasIssue,
       appColor: appColor,
+      bodyBg: bodyBg,
       fg: fg,
       darkHeader: ThemeData.estimateBrightnessForColor(headerBg) == Brightness.dark,
       cs: cs,
@@ -349,6 +350,7 @@ class _GroupToggle extends StatefulWidget {
   final int value;
   final bool hasIssue;
   final Color? appColor;
+  final Color bodyBg;
   final Color fg;
   final bool darkHeader;
   final ColorScheme cs;
@@ -358,6 +360,7 @@ class _GroupToggle extends StatefulWidget {
     required this.value,
     required this.hasIssue,
     this.appColor,
+    required this.bodyBg,
     required this.fg,
     required this.darkHeader,
     required this.cs,
@@ -396,24 +399,37 @@ class _GroupToggleState extends State<_GroupToggle> {
     final current = _current;
     final dragging = _dragState != null;
 
+    final bool darkColorful = cs.brightness == Brightness.dark && widget.appColor != null;
+
+    final Color state2Pill = darkColorful
+        ? Color.alphaBlend(widget.appColor!.withValues(alpha: 0.60), const Color(0xFF1C1C1C))
+        : cs.primary;
+
     final Color pillColor = switch (current) {
       0 => Colors.transparent,
-      1 => widget.hasIssue ? cs.errorContainer : cs.tertiary,
-      _ => cs.primary,
+      1 => widget.hasIssue ? cs.errorContainer : state2Pill,
+      _ => state2Pill,
     };
+    final Color activeOnPill = darkColorful
+        ? (ThemeData.estimateBrightnessForColor(state2Pill) == Brightness.dark
+            ? Colors.white
+            : Colors.black87)
+        : cs.onPrimary;
     final Color onPill = switch (current) {
       0 => cs.onError,
-      1 => widget.hasIssue ? cs.onErrorContainer : cs.onTertiary,
-      _ => cs.onPrimary,
+      1 => widget.hasIssue ? cs.onErrorContainer : activeOnPill,
+      _ => activeOnPill,
     };
     final Color trackBg = widget.appColor != null
         ? (widget.darkHeader
             ? Colors.white.withValues(alpha: 0.15)
             : Colors.black.withValues(alpha: 0.10))
         : cs.surfaceContainerLow;
-    final Color borderColor = widget.darkHeader
-        ? Colors.white.withValues(alpha: 0.40)
-        : Colors.black.withValues(alpha: current == 0 ? 0.5 : 0.22);
+    final Color borderColor = (cs.brightness == Brightness.dark && widget.appColor != null)
+        ? widget.bodyBg
+        : (widget.darkHeader
+            ? Colors.white.withValues(alpha: 0.40)
+            : Colors.black.withValues(alpha: current == 0 ? 0.5 : 0.22));
     final Color dimColor = widget.appColor != null
         ? (widget.darkHeader
             ? Colors.white.withValues(alpha: 0.50)
@@ -485,10 +501,10 @@ class _GroupToggleState extends State<_GroupToggle> {
                 decoration: BoxDecoration(
                   color: current == 0
                       ? (cs.brightness == Brightness.dark
-                          ? const Color(0xFF4E5057)
+                          ? (widget.appColor != null ? widget.bodyBg : const Color(0xFF4E5057))
                           : Colors.black54)
                       : (cs.brightness == Brightness.dark
-                          ? cs.onPrimary
+                          ? (darkColorful ? widget.appColor! : cs.onPrimary)
                           : Colors.white),
                   shape: BoxShape.circle,
                   boxShadow: [
@@ -521,7 +537,13 @@ class _GroupToggleState extends State<_GroupToggle> {
                             : Colors.black45)
                         : (i < current || i == 0
                             ? onPill
-                            : (i == current ? pillColor : dimColor)),
+                            : (i == current
+                                ? (darkColorful && current >= 1
+                                    ? (ThemeData.estimateBrightnessForColor(widget.appColor!) == Brightness.dark
+                                        ? Colors.white
+                                        : Colors.black87)
+                                    : pillColor)
+                                : dimColor)),
                   ),
                 )),
               ),
