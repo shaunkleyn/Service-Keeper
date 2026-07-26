@@ -249,9 +249,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
             'Interval checking is a safety net: it periodically re-checks all services to catch '
             'anything the live watcher may have missed (e.g. if Shizuku was briefly offline). '
             'It\'s optional, but useful as a backup.',
-      onDismiss: () async {
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.setBool('monitoring_explainer_dismissed', true);
+      onDismiss: () {
             if (mounted) setState(() => _monitoringExplainerDismissed = true);
           },
       icon: Icons.info,
@@ -272,9 +270,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       dismissed: false,
       text: 'Tip: If a service can\'t be started directly, enable app restart fallback in App settings to launch the app instead.',
 
-      onDismiss: () async {
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.setBool('app_restart_tip_dismissed', true);
+      onDismiss: () {
             if (mounted) setState(() => _appRestartTipDismissed = true);
           },
       icon: Icons.open_in_browser_outlined,

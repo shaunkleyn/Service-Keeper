@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// Sliver-based expandable app group card.
 /// Must be placed inside a [CustomScrollView]'s slivers list.
@@ -527,7 +528,35 @@ class _GroupToggleState extends State<_GroupToggle> {
     final thumbLeft = _thumbLeft(current);
     final dur = dragging ? Duration.zero : const Duration(milliseconds: 250);
 
-    return GestureDetector(
+    const stateLabels = ['Disabled', 'Monitoring', 'Monitoring and Notifications'];
+
+    return Semantics(
+      label: 'Service monitoring',
+      value: stateLabels[current],
+      increasedValue: current < 2 ? stateLabels[current + 1] : null,
+      decreasedValue: current > 0 ? stateLabels[current - 1] : null,
+      onIncrease: current < 2 ? () => widget.onChanged(current + 1) : null,
+      onDecrease: current > 0 ? () => widget.onChanged(current - 1) : null,
+      child: Focus(
+        onKeyEvent: (node, event) {
+          if (event is KeyDownEvent) {
+            if (event.logicalKey == LogicalKeyboardKey.arrowRight && current < 2) {
+              widget.onChanged(current + 1);
+              return KeyEventResult.handled;
+            }
+            if (event.logicalKey == LogicalKeyboardKey.arrowLeft && current > 0) {
+              widget.onChanged(current - 1);
+              return KeyEventResult.handled;
+            }
+            if (event.logicalKey == LogicalKeyboardKey.select ||
+                event.logicalKey == LogicalKeyboardKey.enter) {
+              widget.onChanged((current + 1) % 3);
+              return KeyEventResult.handled;
+            }
+          }
+          return KeyEventResult.ignored;
+        },
+        child: GestureDetector(
       behavior: HitTestBehavior.opaque,
       // Tap: determine slot from touch position, commit immediately.
       onTapUp: (d) => widget.onChanged(_slotAt(d.localPosition.dx)),
@@ -630,6 +659,8 @@ class _GroupToggleState extends State<_GroupToggle> {
               ),
             ),
           ],
+        ),
+      ),
         ),
       ),
     );
