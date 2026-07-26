@@ -151,8 +151,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _clockTimer?.cancel();
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
-      setState(() => _now = DateTime.now());
-      _checkOverdueServices();
+      _now = DateTime.now();
+
+      final shouldTickUi = _globalIntervalEnabled &&
+          _services.any((s) => s.enabled && s.lastChecked != null);
+      if (shouldTickUi) {
+        setState(() {});
+      }
+
+      if (shouldTickUi) {
+        _checkOverdueServices();
+      }
     });
   }
 
