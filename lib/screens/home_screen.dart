@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
+import '../app_settings_notifier.dart';
 import '../models/monitored_service.dart';
 import '../models/audit_event.dart';
 import '../services/service_manager.dart';
@@ -19,6 +20,7 @@ import '../widgets/service_tile.dart';
 import '../widgets/undo_snack_bar.dart';
 import 'service_picker_screen.dart';
 import 'service_detail_screen.dart';
+import 'app_settings_screen.dart';
 import 'service_audit_screen.dart';
 
 class SelectionState {
@@ -86,15 +88,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _globalIntervalEnabled = true;
   int _defaultIntervalMinutes = 15;
   bool _loading = true;
+  Set<String> _restoredMissingPackages = {};
   final _expandedGroups = <String, bool>{};
   final _restartingServices = <String>{};
   final _selectedServices = <String>{};
+  final _checkingServices = <String>{};
+  Timer? _clockTimer;
+  DateTime _now = DateTime.now();
   bool get _isInSelectionMode => _selectedServices.isNotEmpty;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    colorfulCardsNotifier.addListener(_onColorfulCardsChanged);
+    _startClockTicker();
     _manager = ServiceManager(_shizuku);
     widget.onRegister(
       refresh: _reload,
@@ -107,8 +115,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    colorfulCardsNotifier.removeListener(_onColorfulCardsChanged);
     WidgetsBinding.instance.removeObserver(this);
+    _stopClockTicker();
     super.dispose();
+  }
+
+  void _onColorfulCardsChanged() {
+    if (!mounted) return;
+    setState(() => _useAppColors = colorfulCardsNotifier.value);
+    if (_useAppColors) _generateAppColors();
   }
 
   @override
@@ -120,15 +136,61 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      _now = DateTime.now();
+      _startClockTicker();
       _loadColorPreference();
       _loadServices();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.inactive) {
+      _stopClockTicker();
     }
+  }
+
+  void _startClockTicker() {
+    _clockTimer?.cancel();
+    _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      _now = DateTime.now();
+
+      final shouldTickUi = _globalIntervalEnabled &&
+          _services.any((s) => s.enabled && s.lastChecked != null);
+      if (shouldTickUi) {
+        setState(() {});
+      }
+
+      if (shouldTickUi) {
+        _checkOverdueServices();
+      }
+    });
+  }
+
+  void _checkOverdueServices() {
+    if (widget.shizukuStatus != ShizukuStatus.ready) return;
+    if (!_globalIntervalEnabled) return;
+    for (final s in _services) {
+      if (!s.enabled || s.lastChecked == null) continue;
+      final key = '${s.packageName}/${s.serviceClass}';
+      if (_checkingServices.contains(key)) continue;
+      final elapsed = _now.difference(s.lastChecked!).inSeconds;
+      if (elapsed >= _effectiveInterval(s) * 60) {
+        _checkingServices.add(key);
+        _checkDue(s).whenComplete(() => _checkingServices.remove(key));
+      }
+    }
+  }
+
+  void _stopClockTicker() {
+    _clockTimer?.cancel();
+    _clockTimer = null;
   }
 
   Future<void> _init() async {
     await _db.importPendingEvents();
     await _loadSettings();
     await _loadServices();
+    final missing = await _storage.loadRestoredMissingPackages();
+    if (mounted) setState(() => _restoredMissingPackages = missing);
     await _system.rescheduleAllMonitorWork();
     setState(() => _loading = false);
   }
@@ -137,6 +199,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final oldDefault = _defaultIntervalMinutes;
     await _loadSettings();
     await _loadServices();
+    final missing = await _storage.loadRestoredMissingPackages();
+    if (mounted) setState(() => _restoredMissingPackages = missing);
     if (_defaultIntervalMinutes != oldDefault) {
       await _rescheduleGlobalIntervalServices();
     }
@@ -161,6 +225,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int _effectiveInterval(MonitoredService service) =>
       service.customIntervalMinutes ?? _defaultIntervalMinutes;
 
+  String _intervalLabelForNotes(int? customIntervalMinutes) {
+    return customIntervalMinutes == null
+        ? 'default ($_defaultIntervalMinutes min)'
+        : '$customIntervalMinutes min';
+  }
+
   Future<void> _rescheduleGlobalIntervalServices() async {
     for (final s in _services) {
       if (s.customIntervalMinutes == null) {
@@ -173,25 +243,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
  
   Future<void> _log(MonitoredService s, AuditEventType type, AuditTrigger trigger,
       {String? notes}) {
-    final siblings =
-        _services.where((svc) => svc.packageName == s.packageName).toList();
-    String? snapshot;
-    if (siblings.length > 1) {
-      snapshot = siblings.map((svc) {
-        final marker = svc.serviceClass == s.serviceClass ? '▶' : '·';
-        final stateLabel = switch (svc.state) {
-          ServiceState.running => 'Running',
-          ServiceState.crashed => 'Not running',
-          ServiceState.stopped => 'Disabled',
-          ServiceState.unknown => 'Unknown',
-        };
-        return '$marker ${svc.displayLabel}: $stateLabel';
-      }).join('\n');
-    }
-    final combined = [
-      if (notes != null && notes.isNotEmpty) notes,
-      if (snapshot != null) snapshot,
-    ].join('\n');
     return _db.addEvent(AuditEvent(
       timestamp: DateTime.now(),
       packageName: s.packageName,
@@ -199,7 +250,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       displayLabel: s.displayLabel,
       eventType: type,
       trigger: trigger,
-      notes: combined.isEmpty ? null : combined,
+      notes: (notes == null || notes.isEmpty) ? null : notes,
     ));
   }
 
@@ -368,6 +419,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       serviceClass: service.serviceClass,
       displayLabel: service.displayLabel,
       intervalMinutes: minutes,
+      appRestartEnabled: service.appRestartEnabled,
     );
 
     Workmanager().cancelByTag(service.workTag);
@@ -406,10 +458,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _onServicePicked(MonitoredService result) async {
+    final existingForApp =
+        _services.where((s) => s.packageName == result.packageName).toList();
+    final appRestartEnabled =
+        existingForApp.isNotEmpty ? existingForApp.every((s) => s.appRestartEnabled) : false;
     // New services use global interval by default (customIntervalMinutes = null)
     final service = result.copyWith(
       customIntervalMinutes: null,
       intervalMinutes: _defaultIntervalMinutes,
+      appRestartEnabled: appRestartEnabled,
     );
     await _storage.addService(service);
     await _log(service, AuditEventType.added, AuditTrigger.manual);
@@ -417,68 +474,86 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _scheduleWork(service);
   }
 
-  // Returns: null = cancelled, -1 = use global, positive int = specific minutes
-  Future<int?> _showIntervalDialog(BuildContext ctx, int? currentCustomMinutes) {
-    const presets = [
-      (label: '5 minutes', minutes: 5),
-      (label: '10 minutes', minutes: 10),
-      (label: '15 minutes', minutes: 15),
-      (label: '30 minutes', minutes: 30),
-      (label: '1 hour', minutes: 60),
-      (label: '2 hours', minutes: 120),
-      (label: '4 hours', minutes: 240),
-    ];
-    // 0 = global sentinel in the radio group
-    int radioValue = currentCustomMinutes ?? 0;
-    return showDialog<int>(
-      context: ctx,
-      builder: (dCtx) => StatefulBuilder(
-        builder: (dCtx, setSt) => AlertDialog(
-          title: const Text('Check interval'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                RadioListTile<int>(
-                  dense: true,
-                  title: Text('Global value ($_defaultIntervalMinutes min)'),
-                  value: 0,
-                  groupValue: radioValue,
-                  onChanged: (_) => setSt(() => radioValue = 0),
-                ),
-                ...presets.map((p) => RadioListTile<int>(
-                      dense: true,
-                      title: Text(p.label),
-                      value: p.minutes,
-                      groupValue: radioValue,
-                      onChanged: (v) => setSt(() => radioValue = v!),
-                    )),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(dCtx), child: const Text('Cancel')),
-            FilledButton(
-                onPressed: () => Navigator.pop(dCtx, radioValue == 0 ? -1 : radioValue),
-                child: const Text('Apply')),
-          ],
+  Future<void> _openAppSettings(
+      String pkg, String appName, List<MonitoredService> services) async {
+    if (services.isEmpty) return;
+    final customIntervals = services.map((s) => s.customIntervalMinutes).toSet();
+    final currentCustomInterval =
+        customIntervals.length == 1 ? customIntervals.first : services.first.customIntervalMinutes;
+    final appRestartEnabled = services.every((s) => s.appRestartEnabled);
+    final previousIntervalLabel = _intervalLabelForNotes(currentCustomInterval);
+
+    final result = await Navigator.push<AppSettingsResult>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AppSettingsScreen(
+          appName: appName,
+          globalIntervalEnabled: _globalIntervalEnabled,
+          globalIntervalMinutes: _defaultIntervalMinutes,
+          customIntervalMinutes: currentCustomInterval,
+          appRestartEnabled: appRestartEnabled,
         ),
       ),
     );
-  }
 
-  Future<void> _setAppInterval(List<MonitoredService> services, int? customMinutes) async {
-    final effectiveMinutes = customMinutes ?? _defaultIntervalMinutes;
+    if (result == null) return;
+
+    final effectiveMinutes = result.customIntervalMinutes ?? _defaultIntervalMinutes;
+    var changedRestart = false;
+    var changedInterval = false;
+
     for (final s in services) {
       final updated = s.copyWith(
-        customIntervalMinutes: customMinutes,
+        customIntervalMinutes: result.customIntervalMinutes,
         intervalMinutes: effectiveMinutes,
+        appRestartEnabled: result.appRestartEnabled,
       );
       await _storage.updateService(updated);
       if (s.enabled && _globalIntervalEnabled) await _scheduleWork(updated);
+
+      if (updated.customIntervalMinutes != s.customIntervalMinutes ||
+          updated.intervalMinutes != s.intervalMinutes) {
+        changedInterval = true;
+      }
+      if (updated.appRestartEnabled != s.appRestartEnabled) {
+        changedRestart = true;
+      }
     }
+
+    if (changedInterval || changedRestart) {
+      final anchor = services.first;
+      if (changedInterval) {
+        await _log(
+          anchor,
+          AuditEventType.intervalChanged,
+          AuditTrigger.manual,
+          notes:
+              'App settings: check interval $previousIntervalLabel -> ${_intervalLabelForNotes(result.customIntervalMinutes)} for ${services.length} service(s)',
+        );
+      }
+      if (changedRestart) {
+        await _log(
+          anchor,
+          AuditEventType.configChanged,
+          AuditTrigger.manual,
+          notes:
+              'App settings: restart fallback ${appRestartEnabled ? 'on' : 'off'} -> ${result.appRestartEnabled ? 'on' : 'off'} for ${services.length} service(s)',
+        );
+      }
+    }
+
     await _loadServices();
+
+    if (!mounted) return;
+    final updates = <String>[];
+    if (changedInterval) updates.add('check interval');
+    if (changedRestart) updates.add('restart fallback');
+    if (updates.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('$appName: updated ${updates.join(' and ')}'),
+        duration: const Duration(seconds: 2),
+      ));
+    }
   }
 
   Future<void> _addServiceForApp(String packageName) async {
@@ -521,6 +596,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
     if (updated == null) return;
     await _storage.updateService(updated);
+    if (updated.customIntervalMinutes != service.customIntervalMinutes ||
+        updated.intervalMinutes != service.intervalMinutes) {
+      await _log(
+        updated,
+        AuditEventType.intervalChanged,
+        AuditTrigger.manual,
+        notes:
+            'Service settings: check interval ${_intervalLabelForNotes(service.customIntervalMinutes)} -> ${_intervalLabelForNotes(updated.customIntervalMinutes)}',
+      );
+    }
     await _loadServices();
     await _scheduleWork(updated);
   }
@@ -568,7 +653,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final key = '${service.packageName}/${service.serviceClass}';
     setState(() => _restartingServices.add(key));
 
-    await _log(service, AuditEventType.restartAttempted, AuditTrigger.manual);
+    await _log(
+      service,
+      AuditEventType.restartAttempted,
+      AuditTrigger.manual,
+      notes:
+          'Manual restart requested (app restart fallback: ${service.appRestartEnabled ? 'on' : 'off'})',
+    );
     final (ok, detail) = await _manager.startService(service);
 
     bool? nowRunning;
@@ -636,8 +727,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
 
-    await _log(service, AuditEventType.detectedStopped, AuditTrigger.automatic);
-    await _log(service, AuditEventType.restartAttempted, AuditTrigger.automatic);
+    await _log(
+      service,
+      AuditEventType.detectedStopped,
+      AuditTrigger.automatic,
+      notes:
+          'Health check detected stopped service (interval: ${service.intervalMinutes} min)',
+    );
+    await _log(
+      service,
+      AuditEventType.restartAttempted,
+      AuditTrigger.automatic,
+      notes:
+          'Automatic restart after failed health check (app restart fallback: ${service.appRestartEnabled ? 'on' : 'off'})',
+    );
     final (ok, detail) = await _manager.startService(service);
 
     if (!ok) {
@@ -651,7 +754,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (mounted) {
         final hint = service.appRestartEnabled
             ? null
-            : ' Try enabling "Restart whole app" in Configure.';
+          : ' Try enabling app restart fallback in App settings.';
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(
             'Could not restart ${service.displayLabel}.${hint ?? ''}',
@@ -691,7 +794,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (mounted) {
         final hint = service.appRestartEnabled
             ? null
-            : ' Try enabling "Restart whole app" in Configure.';
+          : ' Try enabling app restart fallback in App settings.';
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(
             'Could not restart ${service.displayLabel}.${hint ?? ''}',
@@ -722,7 +825,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     int failCount = 0;
 
     for (final s in enabled) {
-      await _log(s, AuditEventType.restartAttempted, AuditTrigger.manual);
+      await _log(
+        s,
+        AuditEventType.restartAttempted,
+        AuditTrigger.manual,
+        notes:
+            'Bulk manual restart (app restart fallback: ${s.appRestartEnabled ? 'on' : 'off'})',
+      );
       final (ok, detail) = await _manager.startService(s);
 
       if (ok) {
@@ -881,6 +990,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       await _storage.removeService(s);
       await _log(s, AuditEventType.removed, AuditTrigger.manual);
     }
+    if (_restoredMissingPackages.contains(pkg)) {
+      await _storage.clearRestoredMissingPackage(pkg);
+      _restoredMissingPackages.remove(pkg);
+    }
     await _loadServices();
   }
 
@@ -964,7 +1077,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final updatedS = s.copyWith(
         customIntervalMinutes: updated.customIntervalMinutes,
         intervalMinutes: updated.intervalMinutes,
-        appRestartEnabled: updated.appRestartEnabled,
       );
       await _storage.updateService(updatedS);
       await _scheduleWork(updatedS);
@@ -973,9 +1085,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         final mins = updatedS.customIntervalMinutes ?? _defaultIntervalMinutes;
         await _log(updatedS, AuditEventType.intervalChanged, AuditTrigger.manual,
             notes: 'Every ${mins}m (bulk configure)');
-      }
-      if (updatedS.appRestartEnabled != s.appRestartEnabled) {
-        await _log(updatedS, AuditEventType.configChanged, AuditTrigger.manual);
       }
     }
     _clearSelection();
@@ -1079,6 +1188,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _services = _services.map((s) => s == service ? updated : s).toList();
     });
     await _storage.updateService(updated);
+    await _log(
+      updated,
+      nowEnabled
+          ? AuditEventType.notificationsEnabled
+          : AuditEventType.notificationsDisabled,
+      AuditTrigger.manual,
+    );
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(nowEnabled
@@ -1101,6 +1217,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         await _log(updated,
             nowEnabled ? AuditEventType.enabled : AuditEventType.disabled,
             AuditTrigger.manual);
+      }
+      if (s.notificationsEnabled != nowNotif) {
+        await _log(
+          updated,
+          nowNotif
+              ? AuditEventType.notificationsEnabled
+              : AuditEventType.notificationsDisabled,
+          AuditTrigger.manual,
+          notes: 'App group state changed',
+        );
       }
       await _scheduleWork(updated);
     }
@@ -1190,12 +1316,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     List<MonitoredService> services,
   ) {
     final appColor = _useAppColors ? _appColorCache[pkg] : null;
+    final isMissingAfterRestore = _restoredMissingPackages.contains(pkg);
     final anyIssue = services.any((s) => s.state == ServiceState.crashed);
     final anyEnabled = services.any((s) => s.enabled);
     final enabledSvcs = services.where((s) => s.enabled);
     final allEnabledNotifOff = anyEnabled &&
         enabledSvcs.every((s) => !s.notificationsEnabled);
     final groupState = !anyEnabled ? 0 : allEnabledNotifOff ? 1 : 2;
+    final appRestartEnabled = services.every((s) => s.appRestartEnabled);
 
     final Color? headerFg = appColor == null
         ? null
@@ -1204,6 +1332,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             : Colors.black87);
 
     final menuItems = <PopupMenuEntry<String>>[
+      const PopupMenuItem(
+        value: 'app_settings',
+        child: Row(children: [
+          Icon(Icons.tune_outlined, size: 16),
+          SizedBox(width: 8),
+          Text('App settings'),
+        ]),
+      ),
+      const PopupMenuDivider(),
       const PopupMenuItem(
         value: 'add_services',
         child: Row(children: [
@@ -1228,15 +1365,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           Text('View history'),
         ]),
       ),
-      if (_globalIntervalEnabled)
-        const PopupMenuItem(
-          value: 'set_interval',
-          child: Row(children: [
-            Icon(Icons.schedule_outlined, size: 16),
-            SizedBox(width: 8),
-            Text('Set Check Interval'),
-          ]),
-        ),
       const PopupMenuDivider(),
       const PopupMenuItem(
         value: 'report_issue',
@@ -1272,25 +1400,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         services: services,
         globalIntervalMinutes: _defaultIntervalMinutes,
         globalIntervalEnabled: _globalIntervalEnabled,
+        now: _now,
       ),
       appColor: appColor,
       subtitle:
-          '${services.length} service${services.length == 1 ? '' : 's'} monitored',
+          '${services.length} service${services.length == 1 ? '' : 's'} monitored • App restart ${appRestartEnabled ? 'on' : 'off'}',
       groupState: groupState,
       hasIssue: anyIssue,
       onGroupStateChanged: (state) => _setGroupState(pkg, services, state),
       menuItems: menuItems,
       onMenuSelected: (v) {
+        if (v == 'app_settings') _openAppSettings(pkg, appName, services);
         if (v == 'add_services') _addServiceForApp(pkg);
         if (v == 'restart_all') _restartAll(services);
         if (v == 'view_history') _viewAppHistory(pkg, appName);
-        if (v == 'set_interval') {
-          _showIntervalDialog(context, services.first.customIntervalMinutes)
-              .then((result) {
-            if (result == null) return;
-            _setAppInterval(services, result == -1 ? null : result);
-          });
-        }
         if (v == 'report_issue') _reportAppIssue(pkg, appName, services);
         if (v == 'remove_app') _removeApp(pkg, appName, services);
       },
@@ -1298,9 +1421,59 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       isInSelectionMode: _isInSelectionMode,
       isSelected: _isAppSelected(services),
       isPartiallySelected: _isAppPartiallySelected(services),
+      isRestoredMissing: isMissingAfterRestore,
       children: [
+        _buildAppModeLegend(context, groupState),
         for (final s in services) _buildServiceRow(context, pkg, s, appColor),
       ],
+    );
+  }
+
+  Widget _buildAppModeLegend(BuildContext context, int groupState) {
+    final cs = Theme.of(context).colorScheme;
+
+    Widget item(int value, String label, Color activeBg, Color activeFg) {
+      final selected = groupState == value;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: selected ? activeBg : cs.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: selected ? activeBg : cs.outlineVariant,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: selected ? activeFg : cs.onSurfaceVariant,
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+      child: Row(
+        children: [
+          item(0, 'Disabled', cs.errorContainer, cs.onErrorContainer),
+          const SizedBox(width: 6),
+          item(1, 'Monitor', cs.tertiaryContainer, cs.onTertiaryContainer),
+          const SizedBox(width: 6),
+          item(2, 'Notify', cs.primaryContainer, cs.onPrimaryContainer),
+          const Spacer(),
+          Text(
+            'Mode',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: cs.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1343,6 +1516,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               Expanded(
                 child: ServiceTile(
                   service: s,
+                  now: _now,
                   showLeading: false,
                   accentColor: appColor,
                   globalIntervalEnabled: _globalIntervalEnabled,
@@ -1357,7 +1531,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       _isInSelectionMode ? null : () => _removeService(s),
                   onRestartNow:
                       _isInSelectionMode ? null : () => _restartNow(s),
-                  onCheckDue: () => _checkDue(s),
+                  onCheckDue: null,
                   onToggleNotifications: _isInSelectionMode
                       ? null
                       : () => _toggleServiceNotification(s),
@@ -1419,6 +1593,7 @@ class _AppIconWithRings extends StatefulWidget {
   final List<MonitoredService> services;
   final int globalIntervalMinutes;
   final bool globalIntervalEnabled;
+  final DateTime now;
 
   const _AppIconWithRings({
     required this.packageName,
@@ -1428,60 +1603,14 @@ class _AppIconWithRings extends StatefulWidget {
     required this.services,
     required this.globalIntervalMinutes,
     required this.globalIntervalEnabled,
+    required this.now,
   });
 
   @override
   State<_AppIconWithRings> createState() => _AppIconWithRingsState();
 }
 
-class _AppIconWithRingsState extends State<_AppIconWithRings>
-    with WidgetsBindingObserver {
-  Timer? _timer;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _startTimer();
-  }
-
-  @override
-  void didUpdateWidget(_AppIconWithRings old) {
-    super.didUpdateWidget(old);
-    _startTimer();
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _startTimer();
-    } else if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.hidden ||
-        state == AppLifecycleState.inactive) {
-      _timer?.cancel();
-      _timer = null;
-    }
-  }
-
-  void _startTimer() {
-    _timer?.cancel();
-    final hasTracked = widget.globalIntervalEnabled &&
-        widget.services.any((s) => s.enabled && s.lastChecked != null);
-    if (hasTracked) {
-      _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (mounted) setState(() {});
-      });
-    } else {
-      _timer = null;
-    }
-  }
+class _AppIconWithRingsState extends State<_AppIconWithRings> {
 
   int _effectiveInterval(MonitoredService s) =>
       s.customIntervalMinutes ?? widget.globalIntervalMinutes;
@@ -1492,7 +1621,7 @@ class _AppIconWithRingsState extends State<_AppIconWithRings>
     if (relevant.isEmpty) return 1.0;
     double minProgress = 1.0;
     for (final s in relevant) {
-      final elapsed = DateTime.now().difference(s.lastChecked!).inSeconds;
+      final elapsed = widget.now.difference(s.lastChecked!).inSeconds;
       final total = intervalMinutes * 60;
       final p = total <= 0 ? 0.0 : ((total - elapsed) / total).clamp(0.0, 1.0);
       if (p < minProgress) minProgress = p;
@@ -1525,13 +1654,37 @@ class _AppIconWithRingsState extends State<_AppIconWithRings>
 
     if (!widget.globalIntervalEnabled) return avatar;
 
+    final hasEnabled = widget.services.any((s) => s.enabled);
     final tracked = widget.services
         .where((s) => s.enabled && s.lastChecked != null)
         .toList();
     final uniqueIntervals =
         tracked.map(_effectiveInterval).toSet().toList()..sort();
 
-    if (uniqueIntervals.isEmpty) return avatar;
+    if (uniqueIntervals.isEmpty) {
+      if (!hasEnabled) return avatar;
+      return SizedBox(
+        width: 44,
+        height: 44,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            SizedBox(
+              width: 43,
+              height: 43,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                strokeCap: StrokeCap.round,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  theme.colorScheme.tertiary.withValues(alpha: 0.75),
+                ),
+              ),
+            ),
+            avatar,
+          ],
+        ),
+      );
+    }
 
     final opacity = 1.0 / uniqueIntervals.length;
 
@@ -1557,8 +1710,9 @@ class _AppIconWithRingsState extends State<_AppIconWithRings>
               height: 43,
               child: CircularProgressIndicator(
                 value: progress,
-                strokeWidth: 3,
-                backgroundColor: Colors.transparent,
+                strokeWidth: 3.5,
+                strokeCap: StrokeCap.round,
+                backgroundColor: ringColor.withValues(alpha: 0.18),
                 valueColor: AlwaysStoppedAnimation<Color>(ringColor),
               ),
             );

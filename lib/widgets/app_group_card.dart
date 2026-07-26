@@ -1,6 +1,6 @@
 import 'dart:typed_data';
-import 'package:animated_toggle_switch/animated_toggle_switch.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// Sliver-based expandable app group card.
 /// Must be placed inside a [CustomScrollView]'s slivers list.
@@ -33,6 +33,7 @@ class AppGroupCard extends StatelessWidget {
   final bool isInSelectionMode;
   final bool isSelected;
   final bool isPartiallySelected;
+  final bool isRestoredMissing;
 
   const AppGroupCard({
     super.key,
@@ -54,6 +55,7 @@ class AppGroupCard extends StatelessWidget {
     this.isInSelectionMode = false,
     this.isSelected = false,
     this.isPartiallySelected = false,
+    this.isRestoredMissing = false,
   });
 
   @override
@@ -90,9 +92,10 @@ class AppGroupCard extends StatelessWidget {
             isInSelectionMode: isInSelectionMode,
             isSelected: isSelected,
             isPartiallySelected: isPartiallySelected,
+            isRestoredMissing: isRestoredMissing,
           ),
         ),
-        if (expanded && children.isNotEmpty)
+        if (children.isNotEmpty)
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -101,23 +104,31 @@ class AppGroupCard extends StatelessWidget {
                   bottomLeft: Radius.circular(12),
                   bottomRight: Radius.circular(12),
                 ),
-                child: ColoredBox(
-                  color: bodyBg,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (int i = 0; i < children.length; i++) ...[
-                        children[i],
-                        if (i < children.length - 1)
-                          Divider(
-                            height: 1,
-                            thickness: 1,
-                            color: theme.colorScheme.outlineVariant
-                                .withValues(alpha: 0.5),
+                child: AnimatedSize(
+                  duration: const Duration(milliseconds: 260),
+                  reverseDuration: const Duration(milliseconds: 220),
+                  curve: Curves.easeInOutCubic,
+                  alignment: Alignment.topCenter,
+                  child: expanded
+                      ? ColoredBox(
+                          color: bodyBg,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              for (int i = 0; i < children.length; i++) ...[
+                                children[i],
+                                if (i < children.length - 1)
+                                  Divider(
+                                    height: 1,
+                                    thickness: 1,
+                                    color: theme.colorScheme.outlineVariant
+                                        .withValues(alpha: 0.5),
+                                  ),
+                              ],
+                            ],
                           ),
-                      ],
-                    ],
-                  ),
+                        )
+                      : const SizedBox.shrink(),
                 ),
               ),
             ),
@@ -145,6 +156,7 @@ class _AppGroupCardHeaderDelegate extends SliverPersistentHeaderDelegate {
   final bool isInSelectionMode;
   final bool isSelected;
   final bool isPartiallySelected;
+  final bool isRestoredMissing;
 
   const _AppGroupCardHeaderDelegate({
     required this.expanded,
@@ -164,6 +176,7 @@ class _AppGroupCardHeaderDelegate extends SliverPersistentHeaderDelegate {
     this.isInSelectionMode = false,
     this.isSelected = false,
     this.isPartiallySelected = false,
+    this.isRestoredMissing = false,
   });
 
   @override
@@ -185,7 +198,7 @@ bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
     isInSelectionMode != old.isInSelectionMode ||
     isSelected != old.isSelected ||
     isPartiallySelected != old.isPartiallySelected ||
-    menuItems != old.menuItems;
+    isRestoredMissing != old.isRestoredMissing;
 
   @override
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
@@ -272,27 +285,57 @@ bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
                                     color: fg.withValues(alpha: 0.5), size: 20)),
                       ),
                     avatar,
-                    const SizedBox(width: 16),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            appName,
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              color: fg,
+                          Tooltip(
+                            message: appName,
+                            waitDuration: const Duration(milliseconds: 350),
+                            child: Text(
+                              appName,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              softWrap: true,
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: fg,
+                              ),
                             ),
                           ),
                           Text(
                             subtitle,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            softWrap: false,
                             style: theme.textTheme.bodySmall?.copyWith(
-                              fontSize: 12,
+                              fontSize: 11,
                               color: headerFg?.withValues(alpha: 0.75) ??
                                   theme.colorScheme.onSurfaceVariant,
                             ),
                           ),
+                          if (isRestoredMissing)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.warning_amber_rounded,
+                                      size: 11,
+                                      color: theme.colorScheme.error),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    'App not installed',
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      fontSize: 10,
+                                      color: theme.colorScheme.error,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -304,12 +347,9 @@ bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
                         padding: EdgeInsets.zero,
                         onSelected: onMenuSelected,
                         itemBuilder: (_) => menuItems,
+                        elevation: 4,
                       ),
-                    AnimatedRotation(
-                      turns: expanded ? 0.5 : 0,
-                      duration: const Duration(milliseconds: 200),
-                      child: Icon(Icons.expand_more, color: fg),
-                    ),
+                    _ExpandChevron(expanded: expanded, color: fg),
                   ],
                 ),
               ),
@@ -322,75 +362,306 @@ bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
 
   Widget _buildToggle(ThemeData theme, Color fg, Color bodyBg, {Color? appColor}) {
     final cs = theme.colorScheme;
-    final current = groupState!;
-
-    Color indicatorFor(int value, {Color? bg, Color? fg}) {
-      final Color color1;
-      switch (value) {
-        case 0:
-          color1 = current == 0 ? bg ?? cs.outlineVariant : fg ?? cs.secondaryContainer;
-          break;
-        case 1:
-          color1 = hasIssue ? cs.errorContainer : (current >= 1 ?  cs.secondaryContainer : bg ?? cs.secondaryContainer);
-          break;
-        default:
-          color1 = (current >= 2 ? cs.secondaryContainer : fg ?? cs.secondaryContainer);
-          break;
-      }
-      return color1;
-    }
-
-    Widget iconFor(int value, {Color? bg, Color? fg}) {
-      final IconData icon;
-      final Color color;
-
-switch (value) {
-  case 0:
-    icon = current == 0 ? Icons.block_outlined : Icons.check_circle;
-    color = current == 0 ? fg ?? cs.onSurfaceVariant : fg ?? Colors.green;
-    break;
-  case 1:
-    icon = current >= 1 ? Icons.visibility : Icons.visibility_off;
-    color = current >= 1 ? fg ?? Colors.green : bg ?? cs.onSurfaceVariant;
-    break;
-  default:
-    icon = current >= 2 ? Icons.notifications : Icons.notifications_off;
-    color = current >= 2 ? fg ?? Colors.green : bg ?? cs.onSurfaceVariant;
+    final headerBg = appColor ?? cs.surfaceContainerLow;
+    return _GroupToggle(
+      value: groupState!,
+      hasIssue: hasIssue,
+      appColor: appColor,
+      bodyBg: bodyBg,
+      fg: fg,
+      darkHeader: ThemeData.estimateBrightnessForColor(headerBg) == Brightness.dark,
+      cs: cs,
+      onChanged: onGroupStateChanged!,
+    );
+  }
 }
 
-      return Icon(icon, size: 16, color: color);
-    }
+class _ExpandChevron extends StatefulWidget {
+  final bool expanded;
+  final Color color;
 
-    return AnimatedToggleSwitch<int>.size(
-      current: current,
-      values: const [0, 1, 2],
-      height: 32,
-      indicatorSize: const Size(20, 20),
-      borderWidth: 2,
-      spacing: 10,
-      iconOpacity: 1.0,
-      selectedIconScale: 1.0,
-      loading: false,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      animationDuration: const Duration(milliseconds: 250),
-      style: ToggleStyle(
-        backgroundColor: appColor != null
-            ? fg.withValues(alpha: 0.3)
-            : cs.surfaceContainerLow,
-        borderColor: ThemeData.estimateBrightnessForColor(appColor ?? cs.surfaceContainerLow) ==
-                Brightness.dark
-            ? Colors.white24
-            : Colors.black26,
-        borderRadius: BorderRadius.circular(20),
-        indicatorBorderRadius: BorderRadius.circular(20),
+  const _ExpandChevron({required this.expanded, required this.color});
+
+  @override
+  State<_ExpandChevron> createState() => _ExpandChevronState();
+}
+
+class _ExpandChevronState extends State<_ExpandChevron>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 220),
+    reverseDuration: const Duration(milliseconds: 180),
+    value: widget.expanded ? 1 : 0,
+  );
+
+  late final Animation<double> _turns = Tween<double>(begin: 0, end: 0.5)
+      .animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOutCubic));
+
+  @override
+  void didUpdateWidget(covariant _ExpandChevron oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.expanded != oldWidget.expanded) {
+      if (widget.expanded) {
+        _controller.forward();
+      } else {
+        _controller.reverse();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RotationTransition(
+      turns: _turns,
+      child: Icon(Icons.expand_more, color: widget.color),
+    );
+  }
+}
+
+class _GroupToggle extends StatefulWidget {
+  final int value;
+  final bool hasIssue;
+  final Color? appColor;
+  final Color bodyBg;
+  final Color fg;
+  final bool darkHeader;
+  final ColorScheme cs;
+  final void Function(int) onChanged;
+
+  const _GroupToggle({
+    required this.value,
+    required this.hasIssue,
+    this.appColor,
+    required this.bodyBg,
+    required this.fg,
+    required this.darkHeader,
+    required this.cs,
+    required this.onChanged,
+  });
+
+  @override
+  State<_GroupToggle> createState() => _GroupToggleState();
+}
+
+class _GroupToggleState extends State<_GroupToggle> {
+  int? _dragState;
+
+  static const _totalWidth = 32.0 * 3;
+  static const _height = 32.0;
+  static const _trackPad = 1.0;
+  static const _slotWidth = (_totalWidth - 2 * _trackPad) / 3;
+
+  int get _current => _dragState ?? widget.value;
+
+  double _thumbSize(int state) => _height - (state == 0 ? 12.0 : 8.0 * _trackPad);
+
+  double _thumbLeft(int state) {
+    final ts = _thumbSize(state);
+    return _trackPad + _slotWidth * state + (_slotWidth - ts) / 2;
+  }
+
+  int _slotAt(double localX) {
+    final inner = (localX - _trackPad).clamp(0.0, _totalWidth - 2 * _trackPad - 0.001);
+    return (inner / _slotWidth).floor().clamp(0, 2);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = widget.cs;
+    final current = _current;
+    final dragging = _dragState != null;
+
+    final bool colorful = widget.appColor != null;
+    final bool darkMode = cs.brightness == Brightness.dark;
+    final Color colorBase = darkMode ? const Color(0xFF1C1C1C) : Colors.white;
+
+    final Color state2Pill = colorful
+        ? Color.alphaBlend(widget.appColor!.withValues(alpha: 0.60), colorBase)
+        : cs.primary;
+
+    final Color pillColor = switch (current) {
+      0 => Colors.transparent,
+      1 => widget.hasIssue ? cs.errorContainer : state2Pill,
+      _ => state2Pill,
+    };
+    final Color activeOnPill = colorful
+        ? (ThemeData.estimateBrightnessForColor(state2Pill) == Brightness.dark
+            ? Colors.white
+            : Colors.black87)
+        : cs.onPrimary;
+    final Color onPill = switch (current) {
+      0 => cs.onError,
+      1 => widget.hasIssue ? cs.onErrorContainer : activeOnPill,
+      _ => activeOnPill,
+    };
+    final Color trackBg = colorful
+        ? (widget.darkHeader
+            ? Colors.white.withValues(alpha: 0.15)
+            : Colors.black.withValues(alpha: 0.10))
+        : cs.surfaceContainerLow;
+    final Color borderColor = colorful
+        ? widget.bodyBg
+        : (widget.darkHeader
+            ? Colors.white.withValues(alpha: 0.40)
+            : Colors.black.withValues(alpha: current == 0 ? 0.5 : 0.22));
+    final Color dimColor = widget.appColor != null
+        ? (widget.darkHeader
+            ? Colors.white.withValues(alpha: 0.50)
+            : Colors.black.withValues(alpha: 0.38))
+        : cs.onSurfaceVariant.withValues(alpha: 0.6);
+
+    final icons = [
+      current >= 1 ? Icons.check_circle_outline : Icons.block_outlined,
+      Icons.visibility,
+      Icons.notifications_active,
+    ];
+
+    final thumbSize = _thumbSize(current);
+    final thumbLeft = _thumbLeft(current);
+    final dur = dragging ? Duration.zero : const Duration(milliseconds: 250);
+
+    const stateLabels = ['Disabled', 'Monitoring', 'Monitoring and Notifications'];
+
+    return Semantics(
+      label: 'Service monitoring',
+      value: stateLabels[current],
+      increasedValue: current < 2 ? stateLabels[current + 1] : null,
+      decreasedValue: current > 0 ? stateLabels[current - 1] : null,
+      onIncrease: current < 2 ? () => widget.onChanged(current + 1) : null,
+      onDecrease: current > 0 ? () => widget.onChanged(current - 1) : null,
+      child: Focus(
+        onKeyEvent: (node, event) {
+          if (event is KeyDownEvent) {
+            if (event.logicalKey == LogicalKeyboardKey.arrowRight && current < 2) {
+              widget.onChanged(current + 1);
+              return KeyEventResult.handled;
+            }
+            if (event.logicalKey == LogicalKeyboardKey.arrowLeft && current > 0) {
+              widget.onChanged(current - 1);
+              return KeyEventResult.handled;
+            }
+            if (event.logicalKey == LogicalKeyboardKey.select ||
+                event.logicalKey == LogicalKeyboardKey.enter) {
+              widget.onChanged((current + 1) % 3);
+              return KeyEventResult.handled;
+            }
+          }
+          return KeyEventResult.ignored;
+        },
+        child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      // Tap: determine slot from touch position, commit immediately.
+      onTapUp: (d) => widget.onChanged(_slotAt(d.localPosition.dx)),
+      // Drag: snap thumb to each slot as finger moves, commit on release.
+      onHorizontalDragUpdate: (d) {
+        final s = _slotAt(d.localPosition.dx);
+        if (s != _dragState) setState(() => _dragState = s);
+      },
+      onHorizontalDragEnd: (_) {
+        final s = _dragState ?? widget.value;
+        setState(() => _dragState = null);
+        widget.onChanged(s);
+      },
+      onHorizontalDragCancel: () => setState(() => _dragState = null),
+      child: SizedBox(
+        width: _totalWidth,
+        height: _height,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: trackBg,
+                  borderRadius: BorderRadius.circular(_height / 2),
+                  border: Border.all(color: borderColor, width: 1.5),
+                ),
+              ),
+            ),
+            Positioned(
+              left: _trackPad,
+              top: _trackPad,
+              bottom: _trackPad,
+              child: AnimatedContainer(
+                duration: dur,
+                curve: Curves.easeInOut,
+                width: _slotWidth * (current + 1),
+                decoration: BoxDecoration(
+                  color: pillColor,
+                  borderRadius: BorderRadius.circular(30),
+                ),
+              ),
+            ),
+            AnimatedPositioned(
+              duration: dur,
+              curve: Curves.easeInOut,
+              left: thumbLeft,
+              top: _height / 2 - thumbSize / 2,
+              child: AnimatedContainer(
+                duration: dur,
+                width: thumbSize,
+                height: thumbSize,
+                decoration: BoxDecoration(
+                  color: current == 0
+                      ? (colorful
+                          ? widget.bodyBg
+                          : (darkMode ? const Color(0xFF4E5057) : Colors.black54))
+                      : (colorful
+                          ? widget.appColor!
+                          : (darkMode ? cs.onPrimary : Colors.white)),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: current > 0
+                          ? Colors.black.withValues(alpha: 0.22)
+                          : Colors.transparent,
+                      blurRadius: current == 0 ? 0 : 4,
+                      spreadRadius: current == 0 ? 0 : 1,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Positioned(
+              left: _trackPad,
+              top: 0,
+              right: _trackPad,
+              bottom: 0,
+              child: Row(
+                children: List.generate(3, (i) => SizedBox(
+                  width: _slotWidth,
+                  child: Icon(
+                    icons[i],
+                    size: 15,
+                    color: (current == 0 && i == 0)
+                        ? (cs.brightness == Brightness.dark
+                            ? const Color(0xFF80828A)
+                            : Colors.black45)
+                        : (i < current || i == 0
+                            ? onPill
+                            : (i == current
+                                ? (colorful && current >= 1
+                                    ? (ThemeData.estimateBrightnessForColor(widget.appColor!) == Brightness.dark
+                                        ? Colors.white
+                                        : Colors.black87)
+                                    : pillColor)
+                                : dimColor)),
+                  ),
+                )),
+              ),
+            ),
+          ],
+        ),
       ),
-      // styleBuilder: (value) => ToggleStyle(indicatorColor: indicatorFor(value, bg: appColor, fg: fg)),
-      styleBuilder: (value) => ToggleStyle(indicatorColor: indicatorFor(value, bg: appColor, fg: fg), ),
-      iconBuilder: (value) => Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: iconFor(value, bg: appColor, fg: appColor != null ? fg : null),
+        ),
       ),
-      onChanged: onGroupStateChanged!,
     );
   }
 }

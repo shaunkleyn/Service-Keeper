@@ -45,6 +45,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _setAppColors(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('use_app_colors', value);
+    colorfulCardsNotifier.value = value;
     setState(() => _useAppColors = value);
   }
 

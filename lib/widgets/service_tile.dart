@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/monitored_service.dart';
@@ -19,6 +18,7 @@ class ServiceTile extends StatefulWidget {
   final bool globalIntervalEnabled;
   final int effectiveIntervalMinutes;
   final bool isRestarting;
+  final DateTime now;
 
   const ServiceTile({
     super.key,
@@ -37,21 +37,20 @@ class ServiceTile extends StatefulWidget {
     this.globalIntervalEnabled = true,
     this.effectiveIntervalMinutes = 15,
     this.isRestarting = false,
+    required this.now,
   });
 
   @override
   State<ServiceTile> createState() => _ServiceTileState();
 }
 
-class _ServiceTileState extends State<ServiceTile> with WidgetsBindingObserver {
-  Timer? _timer;
+class _ServiceTileState extends State<ServiceTile> {
   bool _checkTriggered = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _startTimer();
+    _maybeTriggerDueCheck();
   }
 
   @override
@@ -62,44 +61,25 @@ class _ServiceTileState extends State<ServiceTile> with WidgetsBindingObserver {
         old.globalIntervalEnabled != widget.globalIntervalEnabled ||
         old.service.enabled != widget.service.enabled) {
       _checkTriggered = false;
-      _startTimer();
     }
+    _maybeTriggerDueCheck();
   }
 
-  void _startTimer() {
-    _timer?.cancel();
-    _timer = null;
-    if (widget.globalIntervalEnabled &&
-        widget.service.enabled &&
-        widget.service.lastChecked != null) {
-      _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+  void _maybeTriggerDueCheck() {
+    if (!widget.globalIntervalEnabled || !widget.service.enabled) return;
+    if (widget.service.lastChecked == null) return;
+    if (_progressValue(widget.now) <= 0 && !_checkTriggered) {
+      _checkTriggered = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        if (_progressValue() <= 0 && !_checkTriggered) {
-          _checkTriggered = true;
-          widget.onCheckDue?.call();
-        }
-        setState(() {});
+        widget.onCheckDue?.call();
       });
     }
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _timer?.cancel();
     super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _startTimer();
-    } else if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.hidden ||
-        state == AppLifecycleState.inactive) {
-      _timer?.cancel();
-      _timer = null;
-    }
   }
 
   Color _statusColor(BuildContext context) {
@@ -128,20 +108,20 @@ class _ServiceTileState extends State<ServiceTile> with WidgetsBindingObserver {
     return 'Every ${minutes ~/ 60}h$suffix';
   }
 
-  double _progressValue() {
+  double _progressValue(DateTime now) {
     if (!widget.service.enabled) return 0;
     if (widget.service.lastChecked == null) return 1;
-    final elapsed = DateTime.now().difference(widget.service.lastChecked!);
+    final elapsed = now.difference(widget.service.lastChecked!);
     final interval = Duration(minutes: widget.effectiveIntervalMinutes);
     final remaining = interval - elapsed;
     if (remaining.inSeconds <= 0) return 0;
     return remaining.inSeconds / interval.inSeconds;
   }
 
-  String _nextCheckLabel() {
+  String _nextCheckLabel(DateTime now) {
     if (!widget.service.enabled) return '';
     if (widget.service.lastChecked == null) return 'Pending first check';
-    final elapsed = DateTime.now().difference(widget.service.lastChecked!);
+    final elapsed = now.difference(widget.service.lastChecked!);
     final remaining = Duration(minutes: widget.effectiveIntervalMinutes) - elapsed;
     if (remaining.inSeconds <= 0) return 'Check pending';
     final m = remaining.inMinutes;
@@ -155,8 +135,8 @@ class _ServiceTileState extends State<ServiceTile> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final statusColor = _statusColor(context);
-    final progress = _progressValue();
-    final nextLabel = widget.globalIntervalEnabled ? _nextCheckLabel() : '';
+    final progress = _progressValue(widget.now);
+    final nextLabel = widget.globalIntervalEnabled ? _nextCheckLabel(widget.now) : '';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -305,7 +285,7 @@ class _ServiceTileState extends State<ServiceTile> with WidgetsBindingObserver {
                           const SizedBox(width: 3),
                           Flexible(
                             child: Text(
-                              'Enable "Restart whole app" in Configure to recover this service.',
+                              'Enable app restart fallback in App settings to recover this service.',
                               style: theme.textTheme.bodySmall?.copyWith(
                                 fontSize: 10,
                                 color: theme.colorScheme.error.withValues(alpha: 0.8),
@@ -405,23 +385,27 @@ class _ServiceTileState extends State<ServiceTile> with WidgetsBindingObserver {
         if (widget.globalIntervalEnabled && widget.service.enabled)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(2),
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(end: progress),
+              duration: const Duration(milliseconds: 350),
+              curve: Curves.easeOutCubic,
+              builder: (context, animatedProgress, _) {
+                final baseColor = widget.accentColor ?? theme.colorScheme.primary;
+                final activeColor = animatedProgress < 0.15
+                    ? theme.colorScheme.error
+                    : animatedProgress < 0.35
+                        ? theme.colorScheme.tertiary
+                        : baseColor;
+                return ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
                   child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 3,
+                    value: animatedProgress,
+                    minHeight: 6,
                     backgroundColor: theme.colorScheme.surfaceContainerHighest,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      progress < 0.15
-                          ? Colors.orange
-                          : (widget.accentColor ?? theme.colorScheme.primary).withValues(alpha: 0.85),
-                    ),
+                    color: activeColor,
                   ),
-                ),
-              ],
+                );
+              },
             ),
           ),
       ],

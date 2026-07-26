@@ -7,12 +7,15 @@ import 'package:path_provider/path_provider.dart';
 import 'package:service_keeper/widgets/page_banner.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../app_settings_notifier.dart';
 import '../models/audit_event.dart';
-import '../models/monitored_service.dart';
+import '../services/app_info_service.dart';
+import '../services/backup_service.dart';
 import '../services/database_service.dart';
 import '../services/shizuku_service.dart';
 import '../services/storage_service.dart';
 import '../services/system_service.dart';
+import 'about_screen.dart';
 import 'accessibility_monitor_screen.dart';
 import 'home_screen.dart';
 import 'notification_monitor_screen.dart';
@@ -39,9 +42,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   Timer? _durationTimer;
   bool _batteryExempt = true;
   bool _notificationPermissionGranted = true;
-  bool _appRestartTipDismissed = false;
-  bool _monitoringExplainerDismissed = false;
-  bool _toggleExplainerDismissed = false;
+  bool? _appRestartTipDismissed;
+  bool? _monitoringExplainerDismissed;
+  bool? _toggleExplainerDismissed;
 
   final _refreshCallbacks = <int, VoidCallback>{};
   VoidCallback? _runMonitorNow;
@@ -97,16 +100,11 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   }
 
   Future<void> _init() async {
+    await _reloadBannerStates();
     await _checkShizuku();
     await _checkBatteryOptimization();
     await _checkNotificationPermission();
     await _loadIntervalSetting();
-    final prefs = await SharedPreferences.getInstance();
-    if (mounted) setState(() {
-      _appRestartTipDismissed = prefs.getBool('app_restart_tip_dismissed') ?? false;
-      _monitoringExplainerDismissed = prefs.getBool('monitoring_explainer_dismissed') ?? false;
-      _toggleExplainerDismissed = prefs.getBool('toggle_explainer_dismissed') ?? false;
-    });
   }
 
   Future<void> _loadIntervalSetting() async {
@@ -241,18 +239,17 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   }
 
   Widget _buildMonitoringExplainerBanner() {
+    if (_monitoringExplainerDismissed != false) return const SizedBox.shrink();
     return PageBanner(
       pref: 'monitoring_explainer_dismissed',
-      dismissed: _monitoringExplainerDismissed,
+      dismissed: false,
       text:
             'Service Keeper runs a persistent background watcher that reads Android\'s activity log in real time. '
           'The moment a monitored service stops Service Keeper detects it and restarts it straight away. '
             'Interval checking is a safety net: it periodically re-checks all services to catch '
             'anything the live watcher may have missed (e.g. if Shizuku was briefly offline). '
             'It\'s optional, but useful as a backup.',
-      onDismiss: () async {
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.setBool('monitoring_explainer_dismissed', true);
+      onDismiss: () {
             if (mounted) setState(() => _monitoringExplainerDismissed = true);
           },
       icon: Icons.info,
@@ -266,15 +263,14 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   }
 
   Widget _buildAppRestartTipBanner() {
+    if (_appRestartTipDismissed != false) return const SizedBox.shrink();
     final cs = Theme.of(context).colorScheme;
     return PageBanner(
       pref: 'app_restart_tip_dismissed',
-      dismissed: _appRestartTipDismissed,
-      text: "Tip: If a service can't be started directly, enable \"Restart whole app\" in its Configure menu to launch the app instead.",
+      dismissed: false,
+      text: 'Tip: If a service can\'t be started directly, enable app restart fallback in App settings to launch the app instead.',
 
-      onDismiss: () async {
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.setBool('app_restart_tip_dismissed', true);
+      onDismiss: () {
             if (mounted) setState(() => _appRestartTipDismissed = true);
           },
       icon: Icons.open_in_browser_outlined,
@@ -288,7 +284,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   }
 
   Widget _buildToggleExplainerBanner() {
-    if (_toggleExplainerDismissed) return const SizedBox.shrink();
+    if (_toggleExplainerDismissed != false) return const SizedBox.shrink();
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
 
@@ -376,11 +372,11 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                 description: 'Silent, no alerts',
               ),
               stateItem(
-                icon: Icons.notifications,
+                icon: Icons.notifications_active,
                 indicatorColor: cs.primaryContainer,
                 iconColor: cs.onPrimaryContainer,
-                label: 'Notify',
-                description: 'Watched + alerts',
+                label: 'Monitor + Notify',
+                description: 'Watched + alerted',
               ),
             ],
           ),
@@ -443,6 +439,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
 
   Future<void> _backup() async {
     try {
+      final prefs = await SharedPreferences.getInstance();
       final services = await _storage.loadServices();
       final a11yKeys = await _storage.loadA11yMonitoredKeys();
       final notifKeys = await _storage.loadNotifMonitoredKeys();
@@ -450,22 +447,32 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       final notifListenerNotifOff = await _storage.loadNotifListenerNotifOffKeys();
       final events = await _db.getAllEvents();
       final now = DateTime.now();
+
+      final settings = AppBackupSettings(
+        useAppColors: prefs.getBool('use_app_colors') ?? false,
+        globalIntervalEnabled: prefs.getBool('global_interval_enabled') ?? true,
+        defaultCheckInterval: prefs.getInt('default_check_interval') ?? 15,
+        useMaterialYou: prefs.getBool('use_material_you') ?? false,
+      );
+
+      final data = BackupData(
+        version: BackupService.currentVersion,
+        exportedAt: now,
+        services: services,
+        a11yMonitoredKeys: a11yKeys,
+        notifMonitoredKeys: notifKeys,
+        a11yNotifOffKeys: a11yNotifOff,
+        notifListenerNotifOffKeys: notifListenerNotifOff,
+        settings: settings,
+        auditLog: events.map((e) => e.toMap()).toList(),
+      );
+
       final ts =
           '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}'
           '_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
-      final data = {
-        'version': 2,
-        'exportedAt': now.toIso8601String(),
-        'services': services.map((s) => s.toJson()).toList(),
-        'a11yMonitoredKeys': a11yKeys.toList(),
-        'notifMonitoredKeys': notifKeys.toList(),
-        'a11yNotifOffKeys': a11yNotifOff.toList(),
-        'notifListenerNotifOffKeys': notifListenerNotifOff.toList(),
-        'auditLog': events.map((e) => e.toMap()).toList(),
-      };
       final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/service_keeper_backup_$ts.json');
-      await file.writeAsString(jsonEncode(data));
+      await file.writeAsString(BackupService.encode(data));
       await Share.shareXFiles(
         [XFile(file.path, mimeType: 'application/json')],
         subject: 'Service Keeper Backup',
@@ -498,26 +505,25 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         return;
       }
 
-      final data = jsonDecode(content) as Map<String, dynamic>;
-      final version = data['version'] as int? ?? 1;
-      final services = (data['services'] as List)
-          .map((e) => MonitoredService.fromJson(e as Map<String, dynamic>))
-          .toList();
-      final a11yKeys = version >= 2
-          ? Set<String>.from(data['a11yMonitoredKeys'] as List? ?? [])
-          : <String>{};
-      final notifKeys = version >= 2
-          ? Set<String>.from(data['notifMonitoredKeys'] as List? ?? [])
-          : <String>{};
-      final a11yNotifOff = version >= 2
-          ? Set<String>.from(data['a11yNotifOffKeys'] as List? ?? [])
-          : <String>{};
-      final notifListenerNotifOff = version >= 2
-          ? Set<String>.from(data['notifListenerNotifOffKeys'] as List? ?? [])
-          : <String>{};
-      final rawLog = data['auditLog'] as List? ?? [];
-      final auditLog =
-          rawLog.map((e) => AuditEvent.fromMap(e as Map<String, dynamic>)).toList();
+      final backup = BackupService.decode(content);
+
+      // Detect installed packages via native bridge
+      final appInfo = AppInfoService();
+      final installed = await appInfo.getInstalledServices();
+      final installedPackages = installed.map((s) => s.packageName).toSet();
+
+      final missingPackages = BackupService.findMissingPackages(
+          backup.services, installedPackages);
+      final adjustedServices = BackupService.disableMissingServices(
+          backup.services, missingPackages);
+      final adjustedA11yKeys = BackupService.filterKeysForMissing(
+          backup.a11yMonitoredKeys, missingPackages);
+      final adjustedNotifKeys = BackupService.filterKeysForMissing(
+          backup.notifMonitoredKeys, missingPackages);
+      final adjustedA11yNotifOff = BackupService.filterKeysForMissing(
+          backup.a11yNotifOffKeys, missingPackages);
+      final adjustedNotifListenerNotifOff = BackupService.filterKeysForMissing(
+          backup.notifListenerNotifOffKeys, missingPackages);
 
       if (!mounted) return;
       final currentServices = await _storage.loadServices();
@@ -527,10 +533,12 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           title: const Text('Restore Backup'),
           content: Text(
             'This will replace:\n'
-            '• ${currentServices.length} service${currentServices.length == 1 ? '' : 's'} → ${services.length} from backup\n'
-            '• Accessibility monitoring: ${a11yKeys.length} entries\n'
-            '• Notification monitoring: ${notifKeys.length} entries\n'
-            '• Audit log: ${auditLog.length} events',
+            '• ${currentServices.length} service${currentServices.length == 1 ? '' : 's'} → ${adjustedServices.length} from backup\n'
+            '• Accessibility monitoring: ${adjustedA11yKeys.length} entries\n'
+            '• Notification monitoring: ${adjustedNotifKeys.length} entries\n'
+            '• App settings will be restored\n'
+            '• Audit log: ${backup.auditLog.length} events'
+            '${missingPackages.isNotEmpty ? '\n\n⚠ ${missingPackages.length} app${missingPackages.length == 1 ? '' : 's'} not installed — monitoring disabled' : ''}',
           ),
           actions: [
             TextButton(
@@ -542,12 +550,25 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       );
       if (ok != true) return;
 
-      await _storage.saveServices(services);
-      await _storage.saveA11yMonitoredKeys(a11yKeys);
-      await _storage.saveNotifMonitoredKeys(notifKeys);
-      await _storage.saveA11yNotifOffKeys(a11yNotifOff);
-      await _storage.saveNotifListenerNotifOffKeys(notifListenerNotifOff);
-      await _db.importAuditEvents(auditLog);
+      // Restore data
+      await _storage.saveServices(adjustedServices);
+      await _storage.saveA11yMonitoredKeys(adjustedA11yKeys);
+      await _storage.saveNotifMonitoredKeys(adjustedNotifKeys);
+      await _storage.saveA11yNotifOffKeys(adjustedA11yNotifOff);
+      await _storage.saveNotifListenerNotifOffKeys(adjustedNotifListenerNotifOff);
+      await _storage.saveRestoredMissingPackages(missingPackages);
+      await _db.importAuditEvents(
+          backup.auditLog.map((e) => AuditEvent.fromMap(e)).toList());
+
+      // Restore app settings
+      final prefs = await SharedPreferences.getInstance();
+      final s = backup.settings;
+      await prefs.setBool('use_app_colors', s.useAppColors);
+      await prefs.setBool('global_interval_enabled', s.globalIntervalEnabled);
+      await prefs.setInt('default_check_interval', s.defaultCheckInterval);
+      await prefs.setBool('use_material_you', s.useMaterialYou);
+      colorfulCardsNotifier.value = s.useAppColors;
+      _loadIntervalSetting();
 
       _refreshCallbacks[0]?.call();
       _refreshCallbacks[1]?.call();
@@ -557,7 +578,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Restored ${services.length} services and ${auditLog.length} history events',
+              'Restored ${adjustedServices.length} services'
+              '${missingPackages.isNotEmpty ? ' (${missingPackages.length} missing)' : ''}'
+              ' and ${backup.auditLog.length} history events',
             ),
           ),
         );
@@ -684,6 +707,9 @@ switch (v) {
                     }
                     if (v == 'backup') _backup();
                     if (v == 'restore') _restore();
+                    if (v == 'about') {
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutScreen()));
+                    }
                   },
                   itemBuilder: (_) => [
                     if (_undoAction != null) ...[
@@ -702,6 +728,8 @@ switch (v) {
                     const PopupMenuItem(value: 'backup', child: Text('Backup')),
                     const PopupMenuItem(
                         value: 'restore', child: Text('Restore')),
+                    const PopupMenuDivider(),
+                    const PopupMenuItem(value: 'about', child: Text('About')),
                   ],
                 ),
               ],

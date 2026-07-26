@@ -6,6 +6,7 @@ import 'package:service_keeper/widgets/app_group_card.dart';
 import 'package:service_keeper/widgets/page_banner.dart';
 import 'package:service_keeper/widgets/undo_snack_bar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../app_settings_notifier.dart';
 import '../services/app_info_service.dart';
 import '../services/database_service.dart';
 import '../services/diagnostics_service.dart';
@@ -56,14 +57,22 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    colorfulCardsNotifier.addListener(_onColorfulCardsChanged);
     widget.onRegisterRefresh(_load);
     _load();
   }
 
   @override
   void dispose() {
+    colorfulCardsNotifier.removeListener(_onColorfulCardsChanged);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  void _onColorfulCardsChanged() {
+    if (!mounted) return;
+    setState(() => _useAppColors = colorfulCardsNotifier.value);
+    if (_useAppColors) _generateColors();
   }
 
   @override

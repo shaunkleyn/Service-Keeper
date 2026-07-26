@@ -4,6 +4,7 @@
         <item name="android:forceDarkAllowed">false</item>
         <item name="android:windowBackground">@color/launch_screen_bg</item>
     </style>
+
     <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
         <item name="android:forceDarkAllowed">false</item>
         <item name="android:windowBackground">@color/launch_screen_bg</item>

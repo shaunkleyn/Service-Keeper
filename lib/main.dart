@@ -5,7 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 import 'app_settings_notifier.dart';
-import 'screens/main_shell.dart';
+import 'screens/splash_screen.dart';
 import 'services/app_info_service.dart';
 
 @pragma('vm:entry-point')
@@ -50,6 +50,7 @@ void main() async {
 
   final prefs = await SharedPreferences.getInstance();
   materialYouNotifier.value = prefs.getBool('use_material_you') ?? false;
+  colorfulCardsNotifier.value = prefs.getBool('use_app_colors') ?? false;
 
   if (materialYouNotifier.value) {
     wallpaperSeedNotifier.value = await AppInfoService.getWallpaperSeedColor();
@@ -63,26 +64,37 @@ void main() async {
   runApp(const ServiceKeeperApp());
 }
 
-const _defaultSeed = Color(0xFF0D6EFD); // Bootstrap primary
+// Midpoint of the icon's cyan-teal gradient
+const _brandSeed = Color(0xFF00C4A8);
 
 const _subThemes = FlexSubThemesData(
-  defaultRadius: 4,
-  elevatedButtonRadius: 4,
-  outlinedButtonRadius: 4,
-  textButtonRadius: 4,
-  filledButtonRadius: 4,
-  cardRadius: 4,
-  inputDecoratorRadius: 4,
-  dialogRadius: 6,
-  bottomSheetRadius: 6,
-  chipRadius: 4,
+  interactionEffects: true,
+  defaultRadius: 10,
+  elevatedButtonRadius: 10,
+  outlinedButtonRadius: 10,
+  textButtonRadius: 10,
+  filledButtonRadius: 10,
+  cardRadius: 10,
+  inputDecoratorRadius: 8,
+  inputDecoratorUnfocusedHasBorder: true,
+  dialogRadius: 16,
+  bottomSheetRadius: 16,
+  chipRadius: 8,
+  switchSchemeColor: SchemeColor.primary,
+  checkboxSchemeColor: SchemeColor.primary,
+  radioSchemeColor: SchemeColor.primary,
+  navigationBarSelectedLabelSchemeColor: SchemeColor.primary,
+  navigationBarSelectedIconSchemeColor: SchemeColor.primary,
+  navigationBarIndicatorSchemeColor: SchemeColor.primaryContainer,
 );
 
 ThemeData _buildLight(ColorScheme? dynamic, Color? seed) {
   final scheme = dynamic ??
-      ColorScheme.fromSeed(seedColor: seed ?? _defaultSeed, brightness: Brightness.light);
+      ColorScheme.fromSeed(seedColor: seed ?? _brandSeed, brightness: Brightness.light);
   return FlexColorScheme.light(
     colorScheme: scheme,
+    surfaceMode: FlexSurfaceMode.levelSurfacesLowScaffold,
+    blendLevel: 5,
     subThemesData: _subThemes,
   ).toTheme.copyWith(
     textTheme: GoogleFonts.interTextTheme(ThemeData.light().textTheme),
@@ -91,9 +103,11 @@ ThemeData _buildLight(ColorScheme? dynamic, Color? seed) {
 
 ThemeData _buildDark(ColorScheme? dynamic, Color? seed) {
   final scheme = dynamic ??
-      ColorScheme.fromSeed(seedColor: seed ?? _defaultSeed, brightness: Brightness.dark);
+      ColorScheme.fromSeed(seedColor: seed ?? _brandSeed, brightness: Brightness.dark);
   return FlexColorScheme.dark(
     colorScheme: scheme,
+    surfaceMode: FlexSurfaceMode.levelSurfacesLowScaffold,
+    blendLevel: 10,
     subThemesData: _subThemes,
   ).toTheme.copyWith(
     textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
@@ -118,7 +132,7 @@ class ServiceKeeperApp extends StatelessWidget {
               debugShowCheckedModeBanner: false,
               theme: _buildLight(useMY ? lightDynamic : null, useMY ? seed : null),
               darkTheme: _buildDark(useMY ? darkDynamic : null, useMY ? seed : null),
-              home: const MainShell(),
+              home: const SplashScreen(),
             );
           },
         );
