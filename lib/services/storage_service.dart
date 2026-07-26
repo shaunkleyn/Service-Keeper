@@ -184,7 +184,7 @@ class StorageService {
   Future<Set<String>> loadRestoredMissingPackages() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_restoredMissingKey);
-    if (raw == null) return {};
+    if (raw == null) return <String>{};
     return Set<String>.from(jsonDecode(raw) as List);
   }
 
