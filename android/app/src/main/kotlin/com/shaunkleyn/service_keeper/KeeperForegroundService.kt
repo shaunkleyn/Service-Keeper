@@ -1,5 +1,6 @@
 package com.shaunkleyn.service_keeper
 
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -10,6 +11,7 @@ import android.database.ContentObserver
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.view.accessibility.AccessibilityManager
 import java.util.Collections
 import android.provider.Settings
 import androidx.core.app.NotificationCompat
@@ -33,6 +35,8 @@ class KeeperForegroundService : Service() {
         private const val A11Y_NOTIF_OFF_KEY = "flutter.a11y_notif_off"
         private const val NOTIF_LISTENER_NOTIF_OFF_KEY = "flutter.notif_listener_notif_off"
         private const val AUDIT_KEY = "flutter.pending_audit_events"
+        private const val PERIODIC_CHECK_INTERVAL_MS = 15L * 60 * 1000 // 15 minutes
+        private const val REBIND_DELAY_MS = 1000L // Allow Android to fully unbind before re-adding
         private var notifId = 2000
 
         fun start(context: Context, serviceCount: Int? = null) {
@@ -82,6 +86,18 @@ class KeeperForegroundService : Service() {
         }
     }
 
+    // Periodic health check — fires every 15 minutes to catch services that are listed in
+    // settings as enabled but whose process has crashed without Android updating the setting.
+    private val periodicCheckHandler = Handler(Looper.getMainLooper())
+    private val periodicCheckRunnable = object : Runnable {
+        override fun run() {
+            checkAccessibilityServices()
+            checkMalfunctioningA11yServices()
+            checkNotificationListeners()
+            periodicCheckHandler.postDelayed(this, PERIODIC_CHECK_INTERVAL_MS)
+        }
+    }
+
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
         startLogcatMonitor()
         checkAccessibilityServices()
@@ -93,6 +109,7 @@ class KeeperForegroundService : Service() {
         Shizuku.addBinderReceivedListenerSticky(binderReceivedListener)
         startA11yObserver()
         startNotifObserver()
+        periodicCheckHandler.postDelayed(periodicCheckRunnable, PERIODIC_CHECK_INTERVAL_MS)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -105,6 +122,7 @@ class KeeperForegroundService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        periodicCheckHandler.removeCallbacks(periodicCheckRunnable)
         Shizuku.removeBinderReceivedListener(binderReceivedListener)
         stopLogcatMonitor()
         stopA11yObserver()
@@ -128,6 +146,101 @@ class KeeperForegroundService : Service() {
     private fun stopA11yObserver() {
         a11yObserver?.let { contentResolver.unregisterContentObserver(it) }
         a11yObserver = null
+    }
+
+    // Periodic check: detects services that are enabled in settings but whose process has
+    // crashed and is no longer bound by the system. Re-toggles the setting to force Android
+    // to rebind the service.
+    private fun checkMalfunctioningA11yServices() {
+        if (!ShizukuExecutor.isReady()) return
+        Thread {
+            try {
+                val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                val raw = prefs.getString(A11Y_KEY, null) ?: return@Thread
+                val arr = JSONArray(raw)
+
+                val current = ShizukuExecutor.exec(
+                    "settings get secure enabled_accessibility_services"
+                )?.trim()?.takeIf { it.isNotEmpty() && it != "null" } ?: return@Thread
+
+                val enabledSet = current.split(":").mapNotNull { entry ->
+                    val slash = entry.indexOf('/'); if (slash < 0) return@mapNotNull null
+                    val p = entry.substring(0, slash)
+                    var c = entry.substring(slash + 1)
+                    if (c.startsWith(".")) c = p + c
+                    "$p/$c"
+                }.toSet()
+
+                val am = getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
+                val connectedSet = am.getEnabledAccessibilityServiceList(
+                    AccessibilityServiceInfo.FEEDBACK_ALL_MASK
+                ).map { info ->
+                    val si = info.resolveInfo.serviceInfo
+                    "${si.packageName}/${si.name}"
+                }.toSet()
+
+                val notifOffRaw = prefs.getString(A11Y_NOTIF_OFF_KEY, "[]")
+                val notifOffArr = JSONArray(notifOffRaw)
+                val notifOffSet = (0 until notifOffArr.length()).map { notifOffArr.getString(it) }.toSet()
+
+                val notifApps = mutableListOf<String>()
+
+                for (i in 0 until arr.length()) {
+                    val key = arr.getString(i)
+                    val slash = key.indexOf('/'); if (slash < 0) continue
+                    val pkg = key.substring(0, slash)
+                    val cls = key.substring(slash + 1)
+                    val fullCls = if (cls.startsWith(".")) "$pkg$cls" else cls
+                    val normalized = "$pkg/$fullCls"
+
+                    // Only inspect services that are already listed as enabled in settings
+                    if (!enabledSet.contains(normalized)) continue
+
+                    // If the system has the service connected, it is functioning normally
+                    if (connectedSet.contains(normalized)) continue
+
+                    // Service is listed in settings but not connected — re-toggle to force rebind
+                    val label = fullCls.substringAfterLast('.')
+                    val withoutService = current.split(":").filter { entry ->
+                        val s = entry.indexOf('/'); if (s < 0) return@filter true
+                        val p = entry.substring(0, s)
+                        var c = entry.substring(s + 1)
+                        if (c.startsWith(".")) c = p + c
+                        "$p/$c" != normalized
+                    }.joinToString(":")
+
+                    appendAuditEvent(pkg, fullCls, label, "DETECTED_STOPPED", "AUTOMATIC",
+                        "accessibility service enabled but not connected")
+                    appendAuditEvent(pkg, fullCls, label, "RESTART_ATTEMPTED", "AUTOMATIC", null)
+
+                    ShizukuExecutor.exec(
+                        "settings put secure enabled_accessibility_services $withoutService"
+                    )
+                    Thread.sleep(REBIND_DELAY_MS)
+                    val restored = if (withoutService.isEmpty()) normalized else "$withoutService:$normalized"
+                    ShizukuExecutor.exec(
+                        "settings put secure enabled_accessibility_services $restored"
+                    )
+
+                    appendAuditEvent(pkg, fullCls, label, "RESTART_SUCCESS", "AUTOMATIC",
+                        "re-toggled in enabled_accessibility_services")
+
+                    if (!notifOffSet.contains(normalized)) {
+                        notifApps.add(getAppName(pkg))
+                    }
+                }
+
+                val distinct = notifApps.distinct()
+                when {
+                    notifApps.size == 1 ->
+                        sendNotification(distinct[0], "Accessibility service was malfunctioning and has been repaired.")
+                    notifApps.size > 1 && distinct.size == 1 ->
+                        sendNotification(distinct[0], "${notifApps.size} accessibility services repaired.")
+                    notifApps.size > 1 ->
+                        sendNotification("Service Keeper", "Accessibility services repaired: ${distinct.joinToString(", ")}.")
+                }
+            } catch (_: Exception) {}
+        }.start()
     }
 
     private fun checkAccessibilityServices() {
