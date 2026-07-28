@@ -148,6 +148,21 @@ class SystemService {
     }
   }
 
+  Future<bool> repairAccessibilityService({
+    required String packageName,
+    required String serviceClass,
+  }) async {
+    try {
+      return await _channel.invokeMethod<bool>('repairAccessibilityService', {
+            'packageName': packageName,
+            'serviceClass': serviceClass,
+          }) ??
+          false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
   Future<void> openNotificationListenerSettings({String? packageName, String? serviceClass}) async {
     try {
       await _channel.invokeMethod('openNotificationListenerSettings', {

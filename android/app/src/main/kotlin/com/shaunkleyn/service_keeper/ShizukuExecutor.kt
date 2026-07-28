@@ -113,7 +113,7 @@ object ShizukuExecutor {
         val result = exec("am start -n $component")
         if (result == null || result.lowercase().contains("error")) return false
         android.os.SystemClock.sleep(1200)
-        exec("input keyevent 3")
+        exec("input keyevent 4") // BACK returns to previous task; HOME would go to launcher
         return true
     }
 
@@ -158,6 +158,10 @@ object ShizukuExecutor {
         } else {
             StartResult(false, "accessibility toggle attempted but service not detected running")
         }
+    }
+
+    fun repairAccessibilityService(packageName: String, serviceClass: String): Boolean {
+        return tryAccessibilityToggle(packageName, serviceClass).ok
     }
 
     fun startService(packageName: String, serviceClass: String, appRestartEnabled: Boolean = false): Boolean {

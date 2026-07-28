@@ -4,6 +4,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Context
 import android.content.Intent
 import android.database.ContentObserver
@@ -12,6 +13,7 @@ import android.os.IBinder
 import android.os.Looper
 import java.util.Collections
 import android.provider.Settings
+import android.view.accessibility.AccessibilityManager
 import androidx.core.app.NotificationCompat
 import org.json.JSONArray
 import org.json.JSONObject
@@ -58,6 +60,14 @@ class KeeperForegroundService : Service() {
     private var logcatThread: Thread? = null
     private var a11yObserver: ContentObserver? = null
     private var notifObserver: ContentObserver? = null
+    private val a11yHealthHandler = Handler(Looper.getMainLooper())
+    private val a11yHealthRunnable = object : Runnable {
+        override fun run() {
+            checkAccessibilityServices()
+            a11yHealthHandler.postDelayed(this, 15 * 60 * 1000L)
+        }
+    }
+    @Volatile private var a11yCheckRunning = false
 
     // Tracks packages currently being app-restarted to avoid duplicate launches
     private val appRestartingPackages: MutableSet<String> = Collections.synchronizedSet(mutableSetOf())
@@ -93,6 +103,7 @@ class KeeperForegroundService : Service() {
         Shizuku.addBinderReceivedListenerSticky(binderReceivedListener)
         startA11yObserver()
         startNotifObserver()
+        startA11yHealthLoop()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -109,6 +120,7 @@ class KeeperForegroundService : Service() {
         stopLogcatMonitor()
         stopA11yObserver()
         stopNotifObserver()
+        stopA11yHealthLoop()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -130,8 +142,21 @@ class KeeperForegroundService : Service() {
         a11yObserver = null
     }
 
+    private fun startA11yHealthLoop() {
+        a11yHealthHandler.removeCallbacks(a11yHealthRunnable)
+        a11yHealthHandler.postDelayed(a11yHealthRunnable, 60_000L)
+    }
+
+    private fun stopA11yHealthLoop() {
+        a11yHealthHandler.removeCallbacks(a11yHealthRunnable)
+    }
+
     private fun checkAccessibilityServices() {
         if (!ShizukuExecutor.isReady()) return
+        synchronized(this) {
+            if (a11yCheckRunning) return
+            a11yCheckRunning = true
+        }
         Thread {
             try {
                 val current = ShizukuExecutor.exec(
@@ -149,6 +174,22 @@ class KeeperForegroundService : Service() {
                 val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                 val raw = prefs.getString(A11Y_KEY, null) ?: return@Thread
                 val arr = JSONArray(raw)
+                val manager = applicationContext.getSystemService(Context.ACCESSIBILITY_SERVICE)
+                    as? AccessibilityManager
+                val managerEnabled = manager?.isEnabled() == true
+                val managerSet = if (managerEnabled) {
+                    manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+                        .mapNotNull { info ->
+                            val serviceInfo = info.resolveInfo?.serviceInfo ?: return@mapNotNull null
+                            val pkg = serviceInfo.packageName ?: return@mapNotNull null
+                            var cls = serviceInfo.name ?: return@mapNotNull null
+                            if (cls.startsWith(".")) cls = pkg + cls
+                            "$pkg/$cls"
+                        }
+                        .toSet()
+                } else {
+                    emptySet()
+                }
 
                 val notifOffRaw = prefs.getString(A11Y_NOTIF_OFF_KEY, "[]")
                 val notifOffArr = JSONArray(notifOffRaw)
@@ -168,15 +209,30 @@ class KeeperForegroundService : Service() {
                         continue
                     }
 
-                    if (enabledSet.contains("$pkg/$cls")) continue
-
                     val label = cls.substringAfterLast('.')
-                    updated = "$updated:$pkg/$cls"
-                    appendAuditEvent(pkg, cls, label, "DETECTED_STOPPED", "AUTOMATIC", "accessibility disabled by system")
-                    appendAuditEvent(pkg, cls, label, "RESTART_ATTEMPTED", "AUTOMATIC", null)
-                    appendAuditEvent(pkg, cls, label, "RESTART_SUCCESS", "AUTOMATIC", "re-added to enabled_accessibility_services")
-                    if (!notifOffSet.contains("$pkg/$cls")) {
-                        a11yNotifApps.add(getAppName(pkg))
+                    if (!enabledSet.contains("$pkg/$cls")) {
+                        updated = "$updated:$pkg/$cls"
+                        appendAuditEvent(pkg, cls, label, "DETECTED_STOPPED", "AUTOMATIC", "accessibility disabled by system")
+                        appendAuditEvent(pkg, cls, label, "RESTART_ATTEMPTED", "AUTOMATIC", null)
+                        appendAuditEvent(pkg, cls, label, "RESTART_SUCCESS", "AUTOMATIC", "re-added to enabled_accessibility_services")
+                        if (!notifOffSet.contains("$pkg/$cls")) {
+                            a11yNotifApps.add(getAppName(pkg))
+                        }
+                        continue
+                    }
+
+                    if (managerEnabled && !managerSet.contains("$pkg/$cls")) {
+                        appendAuditEvent(pkg, cls, label, "DETECTED_STOPPED", "AUTOMATIC", "accessibility service reported enabled but inactive")
+                        appendAuditEvent(pkg, cls, label, "RESTART_ATTEMPTED", "AUTOMATIC", "revoke/regrant repair")
+                        val repaired = ShizukuExecutor.repairAccessibilityService(pkg, cls)
+                        if (repaired) {
+                            appendAuditEvent(pkg, cls, label, "RESTART_SUCCESS", "AUTOMATIC", "repaired by revoking and regranting accessibility access")
+                            if (!notifOffSet.contains("$pkg/$cls")) {
+                                a11yNotifApps.add(getAppName(pkg))
+                            }
+                        } else {
+                            appendAuditEvent(pkg, cls, label, "RESTART_FAILED", "AUTOMATIC", "repair attempt failed")
+                        }
                     }
                 }
 
@@ -200,6 +256,9 @@ class KeeperForegroundService : Service() {
                     a11yNotifApps.size > 1 -> sendNotification("Service Keeper", "Accessibility access re-enabled for: ${a11yDistinct.joinToString(", ")}.")
                 }
             } catch (_: Exception) {}
+            finally {
+                a11yCheckRunning = false
+            }
         }.start()
     }
 

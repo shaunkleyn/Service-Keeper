@@ -305,6 +305,18 @@ class MainActivity : FlutterActivity() {
                     try { startActivity(intent) } catch (e: Exception) { startActivity(fallback) }
                     result.success(null)
                 }
+                "repairAccessibilityService" -> {
+                    val pkg = call.argument<String>("packageName")
+                    val cls = call.argument<String>("serviceClass")
+                    if (pkg == null || cls == null) {
+                        result.error("INVALID_ARGS", "packageName/serviceClass required", null)
+                        return@setMethodCallHandler
+                    }
+                    Thread {
+                        val repaired = ShizukuExecutor.repairAccessibilityService(pkg, cls)
+                        runOnUiThread { result.success(repaired) }
+                    }.start()
+                }
                 else -> result.notImplemented()
             }
         }

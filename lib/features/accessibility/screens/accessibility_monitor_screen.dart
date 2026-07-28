@@ -520,6 +520,14 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
                     Text('Manage permission'),
                   ]),
                 ),
+                PopupMenuItem(
+                  value: 'repair_access',
+                  child: Row(children: [
+                    Icon(Icons.refresh, size: 18),
+                    SizedBox(width: 8),
+                    Text('Revoke & regrant access'),
+                  ]),
+                ),
                 PopupMenuDivider(),
                 PopupMenuItem(
                   value: 'report_issue',
@@ -543,6 +551,12 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
                   );
                 } else if (v == 'manage_permission') {
                   _system.openAccessibilitySettings(packageName: pkg);
+                } else if (v == 'repair_access') {
+                  _repairAccessibilityAccess(
+                    pkg,
+                    services.first.appName,
+                    services.first.serviceClass,
+                  );
                 } else if (v == 'report_issue') {
                   _reportAppIssue(pkg, services.first.appName, services);
                 }
@@ -570,7 +584,9 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.screenPadding, vertical: 2),
+        horizontal: AppSpacing.screenPadding,
+        vertical: 2,
+      ),
       title: Text(
         svc.serviceClass.split('.').last,
         style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
@@ -592,7 +608,9 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            _notifOffKeys.contains(key) ? Icons.notifications_off : Icons.notifications,
+            _notifOffKeys.contains(key)
+                ? Icons.notifications_off
+                : Icons.notifications,
             size: 16,
             color: _notifOffKeys.contains(key)
                 ? theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4)
@@ -606,11 +624,13 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
               child: Switch(
                 value: monitored,
                 thumbColor: WidgetStateProperty.resolveWith(
-                    (s) => s.contains(WidgetState.selected) ? appColor : null),
+                  (s) => s.contains(WidgetState.selected) ? appColor : null,
+                ),
                 trackColor: WidgetStateProperty.resolveWith(
-                    (s) => s.contains(WidgetState.selected)
-                        ? appColor?.withValues(alpha: 0.5)
-                        : null),
+                  (s) => s.contains(WidgetState.selected)
+                      ? appColor?.withValues(alpha: 0.5)
+                      : null,
+                ),
                 onChanged: (_) {
                   if (!enabled) {
                     _showPermissionRequiredDialog(pkg, svc.serviceClass, svc.appName);
@@ -638,7 +658,11 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
                 );
               } else if (v == 'manage_permission') {
                 _system.openAccessibilitySettings(
-                    packageName: pkg, serviceClass: svc.serviceClass);
+                  packageName: pkg,
+                  serviceClass: svc.serviceClass,
+                );
+              } else if (v == 'repair_access') {
+                _repairAccessibilityAccess(pkg, svc.appName, svc.serviceClass);
               } else if (v == 'report_issue') {
                 _reportServiceIssue(pkg, svc.appName, svc.serviceClass);
               }
@@ -660,6 +684,14 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
                   Text('Manage permission'),
                 ]),
               ),
+              PopupMenuItem(
+                value: 'repair_access',
+                child: Row(children: [
+                  Icon(Icons.refresh, size: 18),
+                  SizedBox(width: 8),
+                  Text('Revoke & regrant access'),
+                ]),
+              ),
               PopupMenuDivider(),
               PopupMenuItem(
                 value: 'report_issue',
@@ -675,8 +707,58 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
       ),
     );
   }
-}
 
+  Future<void> _repairAccessibilityAccess(
+    String packageName,
+    String appName,
+    String serviceClass,
+  ) async {
+    if (!mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Repair accessibility access?'),
+        content: Text(
+          'Service Keeper will revoke and immediately regrant $appName\'s Accessibility access. '
+          'This can fix Android showing it as granted but not working.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Repair'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Repairing $appName accessibility access...')),
+    );
+
+    final ok = await _system.repairAccessibilityService(
+      packageName: packageName,
+      serviceClass: serviceClass,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ok
+              ? '$appName accessibility access repaired'
+              : 'Could not repair $appName accessibility access',
+        ),
+      ),
+    );
+    if (ok) {
+      await _refreshEnabledState();
+    }
+  }
+}
 
 class _StatusChip extends StatelessWidget {
   final bool enabled;
