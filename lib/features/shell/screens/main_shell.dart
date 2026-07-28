@@ -14,6 +14,8 @@ import 'package:service_keeper/core/services/shizuku_service.dart';
 import 'package:service_keeper/core/services/storage_service.dart';
 import 'package:service_keeper/core/services/system_service.dart';
 import 'package:service_keeper/core/theme/app_settings_notifier.dart';
+import 'package:service_keeper/core/theme/app_spacing.dart';
+import 'package:service_keeper/core/theme/app_theme.dart';
 import 'package:service_keeper/core/widgets/page_banner.dart';
 import 'package:service_keeper/features/accessibility/screens/accessibility_monitor_screen.dart';
 import 'package:service_keeper/features/notification/screens/notification_monitor_screen.dart';
@@ -186,7 +188,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   }
 
   Widget _buildShizukuBanner() {
-    final color = _shizukuStatus == ShizukuStatus.ready ? Colors.green : Colors.orange;
+    final color = _shizukuStatus == ShizukuStatus.ready
+        ? context.appTheme.bannerShizukuOk
+        : context.appTheme.bannerShizukuWarn;
     final isReady = _shizukuStatus == ShizukuStatus.ready;
     final duration = isReady ? _formatActiveDuration() : '';
     final label = switch (_shizukuStatus) {
@@ -200,10 +204,11 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       onTap: !isReady ? _showShizukuWarning : null,
       child: Container(
         color: color.withValues(alpha: 0.12),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.screenPadding, vertical: 10),
         child: Row(children: [
-          Icon(icon, color: color, size: 18),
-          const SizedBox(width: 8),
+          Icon(icon, color: color, size: AppSpacing.iconLg),
+          const SizedBox(width: AppSpacing.sm),
           Text(label,
               style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 13)),
           if (!isReady) ...[
@@ -217,22 +222,24 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
 
   Widget _buildBatteryBanner() {
     if (_batteryExempt) return const SizedBox.shrink();
+    final color = context.appTheme.bannerBattery;
     return GestureDetector(
       onTap: () async => _system.requestBatteryOptimizationExemption(),
       child: Container(
-        color: Colors.deepOrange.withValues(alpha: 0.12),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        child: const Row(children: [
-          Icon(Icons.battery_alert, color: Colors.deepOrange, size: 18),
-          SizedBox(width: 8),
+        color: color.withValues(alpha: 0.12),
+        padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.screenPadding, vertical: 10),
+        child: Row(children: [
+          Icon(Icons.battery_alert, color: color, size: AppSpacing.iconLg),
+          const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Text(
               'Battery optimization active — checks may be delayed',
               style: TextStyle(
-                  color: Colors.deepOrange, fontWeight: FontWeight.w600, fontSize: 13),
+                  color: color, fontWeight: FontWeight.w600, fontSize: 13),
             ),
           ),
-          Text('Tap to fix →', style: TextStyle(color: Colors.deepOrange, fontSize: 12)),
+          Text('Tap to fix →', style: TextStyle(color: color, fontSize: 12)),
         ]),
       ),
     );
@@ -312,7 +319,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
               ),
               child: Icon(icon, size: 14, color: iconColor),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: AppSpacing.sm),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -335,7 +342,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
 
     return Container(
       color: cs.surfaceContainerLow,
-      padding: const EdgeInsets.fromLTRB(16, 10, 12, 12),
+      padding: const EdgeInsets.fromLTRB(AppSpacing.screenPadding, 10, AppSpacing.md, AppSpacing.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -391,25 +398,27 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
 
   Widget _buildNotificationPermissionBanner() {
     if (_notificationPermissionGranted) return const SizedBox.shrink();
+    final color = context.appTheme.bannerNotification;
     return GestureDetector(
       onTap: () async {
         await _system.requestNotificationPermission();
         await _checkNotificationPermission();
       },
       child: Container(
-        color: Colors.amber.withValues(alpha: 0.15),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        child: const Row(children: [
-          Icon(Icons.notifications_off, color: Colors.amber, size: 18),
-          SizedBox(width: 8),
+        color: color.withValues(alpha: 0.15),
+        padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.screenPadding, vertical: 10),
+        child: Row(children: [
+          Icon(Icons.notifications_off, color: color, size: AppSpacing.iconLg),
+          const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Text(
               "Notification permission required — restart alerts won't appear",
               style:
-                  TextStyle(color: Colors.amber, fontWeight: FontWeight.w600, fontSize: 13),
+                  TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 13),
             ),
           ),
-          Text('Tap to fix →', style: TextStyle(color: Colors.amber, fontSize: 12)),
+          Text('Tap to fix →', style: TextStyle(color: color, fontSize: 12)),
         ]),
       ),
     );
@@ -484,7 +493,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Backup failed: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('Backup failed: $e'),
+              backgroundColor: Theme.of(context).colorScheme.error),
         );
       }
     }
@@ -592,7 +603,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Restore failed: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('Restore failed: $e'),
+              backgroundColor: Theme.of(context).colorScheme.error),
         );
       }
     }
@@ -667,7 +680,8 @@ switch (v) {
                     PopupMenuItem(
                       value: 'remove',
                       child: Text('Remove',
-                          style: TextStyle(color: Colors.red)),
+                          style: TextStyle(
+                              color: context.appTheme.destructive)),
                     ),
                   ],
                 ),

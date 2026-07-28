@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:service_keeper/core/theme/app_spacing.dart';
 
 class AppSettingsResult {
   final int? customIntervalMinutes;
@@ -86,10 +87,10 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
           ],
         ),
         body: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(AppSpacing.screenPadding),
           children: [
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(AppSpacing.md),
               decoration: BoxDecoration(
                 color: theme.colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(10),
@@ -97,8 +98,9 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
               child: Row(
                 children: [
                   Icon(Icons.check_circle_outline,
-                      color: theme.colorScheme.onSurfaceVariant, size: 18),
-                  const SizedBox(width: 8),
+                      color: theme.colorScheme.onSurfaceVariant,
+                      size: AppSpacing.iconLg),
+                  const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Text(
                       'Changes are saved automatically when you go back. Tap Done to close now.',
@@ -139,8 +141,8 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
             const SizedBox(height: 12),
             if (!widget.globalIntervalEnabled)
               Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+                padding: const EdgeInsets.all(AppSpacing.md),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(8),
@@ -148,8 +150,9 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                 child: Row(
                   children: [
                     Icon(Icons.schedule_outlined,
-                        color: theme.colorScheme.onSurfaceVariant, size: 18),
-                    const SizedBox(width: 8),
+                        color: theme.colorScheme.onSurfaceVariant,
+                        size: AppSpacing.iconLg),
+                    const SizedBox(width: AppSpacing.sm),
                     Expanded(
                       child: Text(
                         'Interval checking is disabled globally. Enable it in Settings to use scheduled checks.',
@@ -191,8 +194,8 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                 )),
             if (_effectiveMinutes < 15 && widget.globalIntervalEnabled)
               Container(
-                margin: const EdgeInsets.only(top: 8),
-                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.only(top: AppSpacing.sm),
+                padding: const EdgeInsets.all(AppSpacing.md),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.tertiaryContainer,
                   borderRadius: BorderRadius.circular(8),
@@ -200,8 +203,9 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                 child: Row(
                   children: [
                     Icon(Icons.info_outline,
-                        color: theme.colorScheme.onTertiaryContainer, size: 18),
-                    const SizedBox(width: 8),
+                        color: theme.colorScheme.onTertiaryContainer,
+                        size: AppSpacing.iconLg),
+                    const SizedBox(width: AppSpacing.sm),
                     Expanded(
                       child: Text(
                         'Intervals under 15 minutes use self-scheduling one-time workers. '

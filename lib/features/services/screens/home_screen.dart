@@ -1,13 +1,12 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:palette_generator/palette_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:service_keeper/core/models/audit_event.dart';
 import 'package:service_keeper/core/models/monitored_service.dart';
 import 'package:service_keeper/core/models/service_stats.dart';
+import 'package:service_keeper/core/services/app_icon_cache.dart';
 import 'package:service_keeper/core/services/app_info_service.dart';
 import 'package:service_keeper/core/services/database_service.dart';
 import 'package:service_keeper/core/services/diagnostics_service.dart';
@@ -15,6 +14,9 @@ import 'package:service_keeper/core/services/shizuku_service.dart';
 import 'package:service_keeper/core/services/storage_service.dart';
 import 'package:service_keeper/core/services/system_service.dart';
 import 'package:service_keeper/core/theme/app_settings_notifier.dart';
+import 'package:service_keeper/core/theme/app_spacing.dart';
+import 'package:service_keeper/core/theme/app_text_styles.dart';
+import 'package:service_keeper/core/theme/app_theme.dart';
 import 'package:service_keeper/core/widgets/undo_snack_bar.dart';
 import 'package:service_keeper/features/settings/screens/app_settings_screen.dart';
 import 'package:service_keeper/features/services/screens/service_audit_screen.dart';
@@ -24,59 +26,62 @@ import 'package:service_keeper/features/services/services/service_manager.dart';
 import 'package:service_keeper/features/services/widgets/app_group_card.dart';
 import 'package:service_keeper/features/services/widgets/service_tile.dart';
 
-const List<PopupMenuEntry<String>> _kAppGroupMenuItems = [
-  PopupMenuItem(
-    value: 'app_settings',
-    child: Row(children: [
-      Icon(Icons.tune_outlined, size: 16),
-      SizedBox(width: 8),
-      Text('App settings'),
-    ]),
-  ),
-  PopupMenuDivider(),
-  PopupMenuItem(
-    value: 'add_services',
-    child: Row(children: [
-      Icon(Icons.add, size: 16),
-      SizedBox(width: 8),
-      Text('Add services'),
-    ]),
-  ),
-  PopupMenuItem(
-    value: 'restart_all',
-    child: Row(children: [
-      Icon(Icons.restart_alt_outlined, size: 16),
-      SizedBox(width: 8),
-      Text('Restart all'),
-    ]),
-  ),
-  PopupMenuItem(
-    value: 'view_history',
-    child: Row(children: [
-      Icon(Icons.history_outlined, size: 16),
-      SizedBox(width: 8),
-      Text('View history'),
-    ]),
-  ),
-  PopupMenuDivider(),
-  PopupMenuItem(
-    value: 'report_issue',
-    child: Row(children: [
-      Icon(Icons.bug_report_outlined, size: 16),
-      SizedBox(width: 8),
-      Text('Report Issue'),
-    ]),
-  ),
-  PopupMenuDivider(),
-  PopupMenuItem(
-    value: 'remove_app',
-    child: Row(children: [
-      Icon(Icons.delete_outline, size: 16, color: Colors.red),
-      SizedBox(width: 8),
-      Text('Remove app', style: TextStyle(color: Colors.red)),
-    ]),
-  ),
-];
+List<PopupMenuEntry<String>> _buildAppGroupMenuItems(BuildContext context) {
+  final destructive = context.appTheme.destructive;
+  return [
+    const PopupMenuItem(
+      value: 'app_settings',
+      child: Row(children: [
+        Icon(Icons.tune_outlined, size: 16),
+        SizedBox(width: 8),
+        Text('App settings'),
+      ]),
+    ),
+    const PopupMenuDivider(),
+    const PopupMenuItem(
+      value: 'add_services',
+      child: Row(children: [
+        Icon(Icons.add, size: 16),
+        SizedBox(width: 8),
+        Text('Add services'),
+      ]),
+    ),
+    const PopupMenuItem(
+      value: 'restart_all',
+      child: Row(children: [
+        Icon(Icons.restart_alt_outlined, size: 16),
+        SizedBox(width: 8),
+        Text('Restart all'),
+      ]),
+    ),
+    const PopupMenuItem(
+      value: 'view_history',
+      child: Row(children: [
+        Icon(Icons.history_outlined, size: 16),
+        SizedBox(width: 8),
+        Text('View history'),
+      ]),
+    ),
+    const PopupMenuDivider(),
+    const PopupMenuItem(
+      value: 'report_issue',
+      child: Row(children: [
+        Icon(Icons.bug_report_outlined, size: 16),
+        SizedBox(width: 8),
+        Text('Report Issue'),
+      ]),
+    ),
+    const PopupMenuDivider(),
+    PopupMenuItem(
+      value: 'remove_app',
+      child: Row(children: [
+        Icon(Icons.delete_outline, size: 16, color: destructive),
+        const SizedBox(width: 8),
+        Text('Remove app', style: TextStyle(color: destructive)),
+      ]),
+    ),
+  ];
+}
 
 class SelectionState {
   final int count;
@@ -355,30 +360,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _fetchIconsAndNames(List<MonitoredService> services) async {
-    final prefs = await SharedPreferences.getInstance();
     final packages = services.map((s) => s.packageName).toSet();
 
-    final cachedIcons = <String, Uint8List?>{};
-    for (final pkg in packages) {
-      final b64 = prefs.getString('app_icon_v1_$pkg');
-      if (b64 != null) cachedIcons[pkg] = base64Decode(b64);
-    }
-    if (mounted && cachedIcons.isNotEmpty) {
-      setState(() => _iconCache = {..._iconCache, ...cachedIcons});
-    }
-
-    final missingIcons = packages.where((p) => !cachedIcons.containsKey(p)).toSet();
-    if (missingIcons.isNotEmpty) {
-      final fetched = await Future.wait(
-        missingIcons.map((pkg) async => MapEntry(pkg, await _appInfo.getAppIcon(pkg))),
-      );
-      for (final e in fetched) {
-        if (e.value != null) {
-          await prefs.setString('app_icon_v1_${e.key}', base64Encode(e.value!));
-        }
-      }
-      if (mounted) setState(() => _iconCache = {..._iconCache, ...Map.fromEntries(fetched)});
-    }
+    final icons = await AppIconCache.instance.fetchIcons(
+      packages,
+      onFetched: (pkg, bytes) {
+        if (mounted) setState(() => _iconCache[pkg] = bytes);
+      },
+    );
+    if (mounted) setState(() => _iconCache = {..._iconCache, ...icons});
 
     final nameMap = <String, String>{};
     for (final s in services) {
@@ -396,34 +386,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _generateAppColors() async {
-    final prefs = await SharedPreferences.getInstance();
-    for (final pkg in _iconCache.keys) {
-      if (_appColorCache.containsKey(pkg)) continue;
-      final cached = prefs.getInt('app_color_v1_$pkg');
-      if (cached != null && mounted) {
-        setState(() => _appColorCache[pkg] = Color(cached));
-      }
-    }
-    for (final pkg in _iconCache.keys) {
-      final bytes = _iconCache[pkg];
-      if (bytes == null) continue;
-      try {
-        final palette = await PaletteGenerator.fromImageProvider(
-          MemoryImage(bytes),
-          maximumColorCount: 16,
-        );
-        final color = palette.vibrantColor?.color ??
-            palette.lightVibrantColor?.color ??
-            palette.dominantColor?.color;
-        if (color != null) {
-          final cached = prefs.getInt('app_color_v1_$pkg');
-          if (cached != color.toARGB32()) {
-            await prefs.setInt('app_color_v1_$pkg', color.toARGB32());
-          }
-          if (mounted) setState(() => _appColorCache[pkg] = color);
-        }
-      } catch (_) {}
-    }
+    await AppIconCache.instance.generateColors(
+      onColor: (pkg, color) {
+        if (mounted) setState(() => _appColorCache[pkg] = color);
+      },
+    );
   }
 
   Future<void> _refreshStatuses() async {
@@ -758,7 +725,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         content: Text(success
             ? '${service.displayLabel} restarted successfully.'
             : 'Failed to restart ${service.displayLabel}.'),
-        backgroundColor: success ? Colors.green : Colors.red,
+        backgroundColor: success
+            ? context.appTheme.serviceRunning
+            : Theme.of(context).colorScheme.error,
       ));
     }
   }
@@ -817,7 +786,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           content: Text(
             'Could not restart ${service.displayLabel}.${hint ?? ''}',
           ),
-          backgroundColor: Colors.red,
+          backgroundColor: Theme.of(context).colorScheme.error,
           duration: const Duration(seconds: 6),
         ));
       }
@@ -857,7 +826,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           content: Text(
             'Could not restart ${service.displayLabel}.${hint ?? ''}',
           ),
-          backgroundColor: Colors.red,
+          backgroundColor: Theme.of(context).colorScheme.error,
           duration: const Duration(seconds: 6),
         ));
       }
@@ -925,16 +894,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _loadServices();
     if (mounted) {
       final String msg;
-      final Color? color;
+      final Color color;
       if (failCount == 0) {
         msg = 'All $successCount service${successCount == 1 ? '' : 's'} restarted successfully.';
-        color = Colors.green;
+        color = context.appTheme.serviceRunning;
       } else if (successCount == 0) {
         msg = 'Failed to restart $failCount service${failCount == 1 ? '' : 's'}.';
-        color = Colors.red;
+        color = Theme.of(context).colorScheme.error;
       } else {
         msg = '$successCount restarted, $failCount failed.';
-        color = Colors.orange;
+        color = context.appTheme.serviceRestarting;
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(msg), backgroundColor: color),
@@ -1386,7 +1355,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       groupState: groupState,
       hasIssue: anyIssue,
       onGroupStateChanged: (state) => _setGroupState(pkg, services, state),
-      menuItems: _kAppGroupMenuItems,
+      menuItems: _buildAppGroupMenuItems(context),
       onMenuSelected: (v) {
         if (v == 'app_settings') _openAppSettings(pkg, appName, services);
         if (v == 'add_services') _addServiceForApp(pkg);
@@ -1452,7 +1421,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (freq > 0) {
       rows.add((
         Icons.warning_amber_outlined,
-        const Color(0xFFE65100),
+        context.appTheme.serviceFrequent,
         '$freq of $totalSvcs service${totalSvcs == 1 ? '' : 's'} restart${freq == 1 ? 's' : ''} frequently',
       ));
     }
@@ -1463,31 +1432,31 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final healthColor = health.color(cs);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.cardPaddingLg, 10, AppSpacing.cardPaddingLg, AppSpacing.xs),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (final (icon, color, label) in rows)
             Padding(
-              padding: const EdgeInsets.only(bottom: 4),
+              padding: const EdgeInsets.only(bottom: AppSpacing.xs),
               child: Row(children: [
-                Icon(icon, size: 12, color: color),
+                Icon(icon, size: AppSpacing.iconSm, color: color),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
                     label,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          fontSize: 11,
-                          color: cs.onSurfaceVariant,
-                        ),
+                    style: AppTextStyles.tinyLabel(context)?.copyWith(
+                      color: cs.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ]),
             ),
           Row(children: [
             Container(
-              width: 8,
-              height: 8,
+              width: AppSpacing.statusDotSize,
+              height: AppSpacing.statusDotSize,
               decoration: BoxDecoration(
                 color: healthColor,
                 shape: BoxShape.circle,
@@ -1496,11 +1465,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             const SizedBox(width: 5),
             Text(
               'Overall health: ${health.label}',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: healthColor,
-                  ),
+              style: AppTextStyles.tinyLabelBold(context)?.copyWith(
+                color: healthColor,
+              ),
             ),
           ]),
           const SizedBox(height: 8),

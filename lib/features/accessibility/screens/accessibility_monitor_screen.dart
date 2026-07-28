@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:service_keeper/core/services/app_info_service.dart';
+import 'package:service_keeper/core/theme/app_spacing.dart';
+import 'package:service_keeper/core/theme/app_text_styles.dart';
+import 'package:service_keeper/core/theme/app_theme.dart';
 import 'package:service_keeper/core/services/database_service.dart';
 import 'package:service_keeper/core/services/diagnostics_service.dart';
 import 'package:service_keeper/core/services/shizuku_service.dart';
@@ -567,7 +569,8 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
     final theme = Theme.of(context);
 
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+      contentPadding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.screenPadding, vertical: 2),
       title: Text(
         svc.serviceClass.split('.').last,
         style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
@@ -577,7 +580,9 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
         children: [
           Text(
             svc.serviceClass,
-            style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
+            style: AppTextStyles.tinyLabel(context)?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 3),
           _StatusChip(enabled: enabled),
@@ -681,7 +686,7 @@ class _StatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    const activeColor = Colors.green;
+    final activeColor = context.appTheme.serviceRunning;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
@@ -690,13 +695,12 @@ class _StatusChip extends StatelessWidget {
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(enabled ? Icons.check_circle : Icons.cancel,
-            size: 11, color: enabled ? activeColor : cs.onSurfaceVariant),
+            size: AppSpacing.iconXs,
+            color: enabled ? activeColor : cs.onSurfaceVariant),
         const SizedBox(width: 3),
         Text(
           enabled ? 'Active' : 'Inactive',
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
+          style: AppTextStyles.metaLabelBold(context)?.copyWith(
             color: enabled ? activeColor : cs.onSurfaceVariant,
           ),
         ),

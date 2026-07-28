@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:service_keeper/core/models/monitored_service.dart';
 import 'package:service_keeper/core/services/app_info_service.dart';
+import 'package:service_keeper/core/theme/app_spacing.dart';
+import 'package:service_keeper/core/theme/app_text_styles.dart';
 import 'package:service_keeper/features/services/services/service_manager.dart';
 
 class _Section {
@@ -225,7 +227,9 @@ class _ServicePickerScreenState extends State<ServicePickerScreen> {
         margin: const EdgeInsets.only(right: 4),
         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
         decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(4)),
-        child: Text(label, style: TextStyle(color: fg, fontSize: 10, fontWeight: FontWeight.bold)),
+        child: Text(
+            label,
+            style: AppTextStyles.metaLabelBold(context)?.copyWith(color: fg)),
       );
 
   @override
@@ -309,14 +313,17 @@ class _ServicePickerScreenState extends State<ServicePickerScreen> {
                     Container(
                       width: double.infinity,
                       color: cs.primaryContainer.withValues(alpha: 0.4),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.cardPaddingLg, vertical: 6),
                       child: Row(children: [
                         Icon(Icons.info_outline, size: 13, color: cs.onPrimaryContainer),
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
                             'App Service = app\'s own code. Pick the service related to location, tracking, or sync.',
-                            style: TextStyle(fontSize: 11, color: cs.onPrimaryContainer),
+                            style: AppTextStyles.tinyLabel(context)?.copyWith(
+                              color: cs.onPrimaryContainer,
+                            ),
                           ),
                         ),
                       ]),
@@ -427,7 +434,7 @@ class _ServicePickerScreenState extends State<ServicePickerScreen> {
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(s.packageName, style: const TextStyle(fontSize: 11)),
+          Text(s.packageName, style: AppTextStyles.tinyLabel(context)),
           if (badges.isNotEmpty) ...[
             const SizedBox(height: 3),
             Wrap(spacing: 0, runSpacing: 2, children: badges),

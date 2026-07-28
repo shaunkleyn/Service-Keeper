@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:service_keeper/core/models/audit_event.dart';
 import 'package:service_keeper/core/models/monitored_service.dart';
 import 'package:service_keeper/core/services/database_service.dart';
+import 'package:service_keeper/core/theme/app_spacing.dart';
+import 'package:service_keeper/core/theme/app_text_styles.dart';
 
 enum AuditCategory { service, accessibility, notification }
 
@@ -169,7 +171,7 @@ class _ServiceAuditScreenState extends State<ServiceAuditScreen> {
       leading: CircleAvatar(
         radius: 16,
         backgroundColor: color.withValues(alpha: 0.15),
-        child: Icon(icon, size: 16, color: color),
+        child: Icon(icon, size: AppSpacing.iconMd, color: color),
       ),
       title: Text(_eventLabel(e.eventType),
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
@@ -177,7 +179,7 @@ class _ServiceAuditScreenState extends State<ServiceAuditScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
-            Text(_formatTs(e.timestamp), style: const TextStyle(fontSize: 11)),
+            Text(_formatTs(e.timestamp), style: AppTextStyles.tinyLabel(context)),
             if (usedBroadcastFallback) ...[
               const SizedBox(width: 8),
               Container(
@@ -188,9 +190,7 @@ class _ServiceAuditScreenState extends State<ServiceAuditScreen> {
                 ),
                 child: Text(
                   'Fallback',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
+                  style: AppTextStyles.metaLabelBold(context)?.copyWith(
                     color: Colors.teal.shade700,
                   ),
                 ),
@@ -208,9 +208,7 @@ class _ServiceAuditScreenState extends State<ServiceAuditScreen> {
                 ),
                 child: Text(
                   e.trigger == AuditTrigger.automatic ? 'Auto' : 'Manual',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
+                  style: AppTextStyles.metaLabelBold(context)?.copyWith(
                     color: e.trigger == AuditTrigger.automatic
                         ? Colors.blue.shade700
                         : Colors.purple.shade700,
@@ -221,7 +219,7 @@ class _ServiceAuditScreenState extends State<ServiceAuditScreen> {
           ]),
           if (widget._serviceClass == null)
             Text(e.displayLabel,
-                style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                style: AppTextStyles.metaLabel(context)?.copyWith(color: Colors.grey)),
           if (e.notes != null &&
               e.notes!.isNotEmpty &&
               (e.eventType == AuditEventType.restartFailed ||
@@ -235,12 +233,10 @@ class _ServiceAuditScreenState extends State<ServiceAuditScreen> {
               padding: const EdgeInsets.only(top: 2),
               child: Text(
                 e.notes!,
-                style: TextStyle(
-                  fontSize: 10,
+                style: AppTextStyles.metaLabelItalic(context)?.copyWith(
                   color: e.eventType == AuditEventType.restartFailed
                       ? Colors.red.shade700
                       : Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontStyle: FontStyle.italic,
                 ),
               ),
             ),

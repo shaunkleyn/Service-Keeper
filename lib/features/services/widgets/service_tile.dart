@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:service_keeper/core/models/monitored_service.dart';
 import 'package:service_keeper/core/models/service_stats.dart';
+import 'package:service_keeper/core/theme/app_spacing.dart';
+import 'package:service_keeper/core/theme/app_text_styles.dart';
+import 'package:service_keeper/core/theme/app_theme.dart';
 
 class ServiceTile extends StatefulWidget {
   final MonitoredService service;
@@ -81,11 +84,11 @@ class _ServiceTileState extends State<ServiceTile> {
   }
 
   Color _statusColor(BuildContext context) {
-    if (widget.isRestarting) return Colors.orange;
+    if (widget.isRestarting) return context.appTheme.serviceRestarting;
     return switch (widget.service.state) {
-      ServiceState.running => Colors.green,
-      ServiceState.crashed => Colors.red,
-      ServiceState.stopped || ServiceState.unknown => Colors.grey,
+      ServiceState.running => context.appTheme.serviceRunning,
+      ServiceState.crashed => Theme.of(context).colorScheme.error,
+      ServiceState.stopped || ServiceState.unknown => context.appTheme.serviceStopped,
     };
   }
 
@@ -141,7 +144,8 @@ class _ServiceTileState extends State<ServiceTile> {
       mainAxisSize: MainAxisSize.min,
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.screenPadding, vertical: AppSpacing.sm),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -177,7 +181,7 @@ class _ServiceTileState extends State<ServiceTile> {
                     ),
                   ],
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: AppSpacing.screenPadding),
               ],
               Expanded(
                 child: Column(
@@ -191,16 +195,16 @@ class _ServiceTileState extends State<ServiceTile> {
                     const SizedBox(height: 2),
                     Text(
                       widget.service.serviceClass,
-                      style: theme.textTheme.bodySmall?.copyWith(
+                      style: AppTextStyles.tinyLabel(context)?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
-                        fontSize: 11,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: AppSpacing.xs),
                     Row(children: [
                       if (widget.globalIntervalEnabled) ...[
-                        Icon(Icons.schedule, size: 12, color: theme.colorScheme.primary),
-                        const SizedBox(width: 4),
+                        Icon(Icons.schedule,
+                            size: AppSpacing.iconSm, color: theme.colorScheme.primary),
+                        const SizedBox(width: AppSpacing.xs),
                         Text(
                           _intervalLabel(),
                           style: theme.textTheme.bodySmall?.copyWith(
@@ -210,7 +214,7 @@ class _ServiceTileState extends State<ServiceTile> {
                             fontWeight: FontWeight.w500,
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: AppSpacing.md),
                       ],
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -220,10 +224,8 @@ class _ServiceTileState extends State<ServiceTile> {
                         ),
                         child: Text(
                           _statusLabel(),
-                          style: theme.textTheme.bodySmall?.copyWith(
+                          style: AppTextStyles.tinyLabelBold(context)?.copyWith(
                             color: statusColor,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 11,
                           ),
                         ),
                       ),
@@ -232,12 +234,12 @@ class _ServiceTileState extends State<ServiceTile> {
                         const SizedBox(width: 6),
                         _HealthChip(health: widget.serviceStats!.health),
                       ],
-                      const SizedBox(width: 8),
+                      const SizedBox(width: AppSpacing.sm),
                       Icon(
                         widget.service.notificationsEnabled
                             ? Icons.notifications
                             : Icons.notifications_off,
-                        size: 16,
+                        size: AppSpacing.iconMd,
                         color: widget.service.notificationsEnabled
                             ? (widget.accentColor ?? theme.colorScheme.primary)
                             : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.45),
@@ -247,7 +249,7 @@ class _ServiceTileState extends State<ServiceTile> {
                         Icon(
                           Icons.open_in_browser,
                           semanticLabel: 'App restart enabled',
-                          size: 16,
+                          size: AppSpacing.iconMd,
                           color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                         ),
                       ],
@@ -256,24 +258,22 @@ class _ServiceTileState extends State<ServiceTile> {
                       const SizedBox(height: 2),
                       Text(
                         'Last checked: ${_formatTime(widget.service.lastChecked!)}',
-                        style: theme.textTheme.bodySmall?.copyWith(fontSize: 10),
+                        style: AppTextStyles.metaLabel(context),
                       ),
                     ],
                     if (widget.service.lastRestarted != null) ...[
                       const SizedBox(height: 2),
                       Text(
                         'Last restarted: ${_formatTime(widget.service.lastRestarted!)}',
-                        style: theme.textTheme.bodySmall?.copyWith(fontSize: 10),
+                        style: AppTextStyles.metaLabel(context),
                       ),
                     ],
                     if (nextLabel.isNotEmpty) ...[
                       const SizedBox(height: 3),
                       Text(
                         nextLabel,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          fontSize: 10,
+                        style: AppTextStyles.metaLabelItalic(context)?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
-                          fontStyle: FontStyle.italic,
                         ),
                       ),
                     ],
@@ -282,7 +282,7 @@ class _ServiceTileState extends State<ServiceTile> {
                       Row(
                         children: [
                           Icon(Icons.rocket_launch_outlined,
-                              size: 11,
+                              size: AppSpacing.iconXs,
                               color: theme.colorScheme.error
                                   .withValues(alpha: 0.85)),
                           const SizedBox(width: 3),
@@ -290,11 +290,8 @@ class _ServiceTileState extends State<ServiceTile> {
                             child: Text(
                               'Required app relaunch to recover'
                               ' (${widget.serviceStats!.appRestarts30d}× in 30 days)',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                fontSize: 10,
-                                color: theme.colorScheme.error
-                                    .withValues(alpha: 0.85),
-                                fontStyle: FontStyle.italic,
+                              style: AppTextStyles.metaLabelItalic(context)?.copyWith(
+                                color: theme.colorScheme.error.withValues(alpha: 0.85),
                               ),
                             ),
                           ),
@@ -307,16 +304,14 @@ class _ServiceTileState extends State<ServiceTile> {
                       Row(
                         children: [
                           Icon(Icons.info_outline,
-                              size: 11,
+                              size: AppSpacing.iconXs,
                               color: theme.colorScheme.error.withValues(alpha: 0.8)),
                           const SizedBox(width: 3),
                           Flexible(
                             child: Text(
                               'Enable app restart fallback in App settings to recover this service.',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                fontSize: 10,
+                              style: AppTextStyles.metaLabelItalic(context)?.copyWith(
                                 color: theme.colorScheme.error.withValues(alpha: 0.8),
-                                fontStyle: FontStyle.italic,
                               ),
                             ),
                           ),
@@ -399,9 +394,10 @@ class _ServiceTileState extends State<ServiceTile> {
                           ],
                         ),
                       ),
-                      const PopupMenuItem(
+                      PopupMenuItem(
                           value: 'remove',
-                          child: Text('Remove', style: TextStyle(color: Colors.red))),
+                          child: Text('Remove',
+                              style: TextStyle(color: context.appTheme.destructive))),
                     ],
                   ),
                 ],
@@ -411,7 +407,8 @@ class _ServiceTileState extends State<ServiceTile> {
         ),
         if (widget.globalIntervalEnabled && widget.service.enabled)
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            padding: const EdgeInsets.fromLTRB(
+                AppSpacing.screenPadding, 0, AppSpacing.screenPadding, AppSpacing.sm),
             child: TweenAnimationBuilder<double>(
               tween: Tween<double>(begin: 0, end: progress),
               duration: const Duration(milliseconds: 350),
@@ -465,11 +462,7 @@ class _HealthChip extends StatelessWidget {
       ),
       child: Text(
         health.label,
-        style: TextStyle(
-          fontSize: 10,
-          color: color,
-          fontWeight: FontWeight.w600,
-        ),
+        style: AppTextStyles.metaLabelBold(context)?.copyWith(color: color),
       ),
     );
   }

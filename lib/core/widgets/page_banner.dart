@@ -1,4 +1,5 @@
- import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
+import 'package:service_keeper/core/theme/app_spacing.dart';
 import 'package:service_keeper/core/widgets/page_animated.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -15,24 +16,28 @@ PageController? pageController}) {
     if (dismissed) return const SizedBox.shrink();
     final banner = Container(
       color: color ?? Colors.black87.withAlpha(102),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.screenPadding, vertical: 10),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Padding(
           padding: const EdgeInsets.only(top: 1),
-          child: Icon(icon, size: 18, color: iconColor ?? textColor ?? Colors.black87),
+          child: Icon(icon, size: AppSpacing.iconLg,
+              color: iconColor ?? textColor ?? Colors.black87),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: AppSpacing.sm),
         Expanded(
-          child: Text(text, style: TextStyle(fontSize: 12, color: textColor ?? Colors.black87)),
+          child: Text(text,
+              style: TextStyle(fontSize: 12, color: textColor ?? Colors.black87)),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: AppSpacing.sm),
         GestureDetector(
           onTap: () async {
             final prefs = await SharedPreferences.getInstance();
             await prefs.setBool(pref, true);
             onDismiss();
           },
-          child: Icon(Icons.close, size: 16, color: iconColor ?? textColor ?? Colors.black87),
+          child: Icon(Icons.close, size: AppSpacing.iconMd,
+              color: iconColor ?? textColor ?? Colors.black87),
         ),
       ]),
     );

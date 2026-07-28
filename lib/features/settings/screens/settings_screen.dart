@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:service_keeper/core/services/app_info_service.dart';
 import 'package:service_keeper/core/theme/app_settings_notifier.dart';
+import 'package:service_keeper/core/theme/app_spacing.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -140,9 +141,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const Divider(height: 1),
           _sectionHeader(context, 'Interval checking'),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            padding: const EdgeInsets.fromLTRB(
+                AppSpacing.screenPadding, 0, AppSpacing.screenPadding, AppSpacing.md),
             child: Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(AppSpacing.md),
               decoration: BoxDecoration(
                 color: theme.colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(8),
@@ -153,9 +155,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Padding(
                     padding: const EdgeInsets.only(top: 1),
                     child: Icon(Icons.info_outline,
-                        color: theme.colorScheme.onSurfaceVariant, size: 16),
+                        color: theme.colorScheme.onSurfaceVariant, size: AppSpacing.iconMd),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Text(
                       'Service Keeper watches Android\'s activity log in real time. '
@@ -187,9 +189,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (_globalIntervalEnabled) ...[
             if (_defaultInterval < 15)
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.screenPadding, 4, AppSpacing.screenPadding, 0),
                 child: Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(AppSpacing.md),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.errorContainer,
                     borderRadius: BorderRadius.circular(8),
@@ -197,8 +200,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: Row(
                     children: [
                       Icon(Icons.battery_alert,
-                          color: theme.colorScheme.onErrorContainer, size: 18),
-                      const SizedBox(width: 8),
+                          color: theme.colorScheme.onErrorContainer,
+                          size: AppSpacing.iconLg),
+                      const SizedBox(width: AppSpacing.sm),
                       Expanded(
                         child: Text(
                           'Intervals under 15 minutes use self-scheduling workers and drain battery faster.',
@@ -213,7 +217,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const Divider(height: 1),
             _sectionHeader(context, 'Default check interval'),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.screenPadding, 0, AppSpacing.screenPadding, AppSpacing.sm),
               child: Text(
                 'Applied to new services. Services with a custom interval are not affected.',
                 style: theme.textTheme.bodySmall
@@ -234,9 +239,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 )),
             if (_defaultInterval < 15)
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.screenPadding, 0, AppSpacing.screenPadding, AppSpacing.screenPadding),
                 child: Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(AppSpacing.md),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.tertiaryContainer,
                     borderRadius: BorderRadius.circular(8),
@@ -244,8 +250,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: Row(
                     children: [
                       Icon(Icons.info_outline,
-                          color: theme.colorScheme.onTertiaryContainer, size: 18),
-                      const SizedBox(width: 8),
+                          color: theme.colorScheme.onTertiaryContainer,
+                          size: AppSpacing.iconLg),
+                      const SizedBox(width: AppSpacing.sm),
                       Expanded(
                         child: Text(
                           'Intervals under 15 minutes use self-scheduling one-time workers. '
@@ -260,9 +267,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
           ] else
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.screenPadding, 4, AppSpacing.screenPadding, AppSpacing.screenPadding),
               child: Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(AppSpacing.md),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(8),
@@ -270,8 +278,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: Row(
                   children: [
                     Icon(Icons.schedule_outlined,
-                        color: theme.colorScheme.onSurfaceVariant, size: 18),
-                    const SizedBox(width: 8),
+                        color: theme.colorScheme.onSurfaceVariant,
+                        size: AppSpacing.iconLg),
+                    const SizedBox(width: AppSpacing.sm),
                     Expanded(
                       child: Text(
                         'Default interval setting is disabled while interval checking is off.',
@@ -302,7 +311,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _sectionHeader(BuildContext context, String title) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 20, 16, 6),
+        padding: const EdgeInsets.fromLTRB(AppSpacing.screenPadding, 20, AppSpacing.screenPadding, 6),
         child: Text(
           title,
           style: Theme.of(context).textTheme.labelLarge?.copyWith(

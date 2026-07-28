@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:service_keeper/core/services/app_info_service.dart';
+import 'package:service_keeper/core/theme/app_spacing.dart';
+import 'package:service_keeper/core/theme/app_text_styles.dart';
+import 'package:service_keeper/core/theme/app_theme.dart';
 import 'package:service_keeper/core/services/database_service.dart';
 import 'package:service_keeper/core/services/diagnostics_service.dart';
 import 'package:service_keeper/core/services/shizuku_service.dart';
@@ -147,57 +149,6 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
     for (final k in revoked) {
       final slash = k.indexOf('/');
       if (slash >= 0) await _storage.removeNotifMonitored(k.substring(0, slash), k.substring(slash + 1));
-    }
-  }
-
-  Future<void> _fetchIcons(Set<String> packages) async {
-    final prefs = await SharedPreferences.getInstance();
-    final cached = <String, Uint8List?>{};
-    for (final pkg in packages) {
-      final b64 = prefs.getString('app_icon_v1_$pkg');
-      if (b64 != null) cached[pkg] = base64Decode(b64);
-    }
-    if (mounted && cached.isNotEmpty) setState(() => _iconCache = {..._iconCache, ...cached});
-
-    final missing = packages.where((p) => !cached.containsKey(p)).toSet();
-    for (final pkg in missing) {
-      final bytes = await _appInfo.getAppIcon(pkg);
-      if (bytes != null) {
-        await prefs.setString('app_icon_v1_$pkg', base64Encode(bytes));
-        if (mounted) setState(() => _iconCache[pkg] = bytes);
-      }
-    }
-    if (_useAppColors) _generateColors();
-  }
-
-  Future<void> _generateColors() async {
-    final prefs = await SharedPreferences.getInstance();
-    for (final pkg in _iconCache.keys) {
-      if (_colorCache.containsKey(pkg)) continue;
-      final cached = prefs.getInt('app_color_v1_$pkg');
-      if (cached != null && mounted) {
-        setState(() => _colorCache[pkg] = Color(cached));
-      }
-    }
-    for (final pkg in _iconCache.keys) {
-      final bytes = _iconCache[pkg];
-      if (bytes == null) continue;
-      try {
-        final palette = await PaletteGenerator.fromImageProvider(
-          MemoryImage(bytes),
-          maximumColorCount: 16,
-        );
-        final color = palette.vibrantColor?.color ??
-            palette.lightVibrantColor?.color ??
-            palette.dominantColor?.color;
-        if (color != null) {
-          final cached = prefs.getInt('app_color_v1_$pkg');
-          if (cached != color.toARGB32()) {
-            await prefs.setInt('app_color_v1_$pkg', color.toARGB32());
-          }
-          if (mounted) setState(() => _colorCache[pkg] = color);
-        }
-      } catch (_) {}
     }
   }
 
@@ -463,11 +414,11 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
     final key = '$pkg/${svc.serviceClass}';
     final enabled = _enabledKeys.contains(key);
     final monitored = _monitoredKeys.contains(key);
-    final appColor = _useAppColors ? _colorCache[pkg] : null;
+    final appColor = useAppColors ? colorCache[pkg] : null;
     final theme = Theme.of(context);
 
     return ListTile(
-      contentPadding: const EdgeInsets.fromLTRB(16, 2, 4, 2),
+      contentPadding: const EdgeInsets.fromLTRB(AppSpacing.screenPadding, 2, 4, 2),
       title: Text(
         svc.serviceClass.split('.').last,
         style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
@@ -477,7 +428,9 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
         children: [
           Text(
             svc.serviceClass,
-            style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
+            style: AppTextStyles.tinyLabel(context)?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 3),
           _StatusChip(enabled: enabled),
@@ -574,17 +527,17 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
         return an.compareTo(bn);
       });
 
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (loading) return const Center(child: CircularProgressIndicator());
 
     return Column(
       children: [
         PageBanner(
           pref: 'notif_perm_info_dismissed',
-          dismissed: _permInfoDismissed,
+          dismissed: permInfoDismissed,
           text: 'The apps listed here support Notification Listeners. '
               'Before Service Keeper can monitor one, its permission must be granted in Android Settings.',
           onDismiss: () async {
-            if (mounted) setState(() => _permInfoDismissed = true);
+            if (mounted) setState(() => permInfoDismissed = true);
           },
           icon: Icons.open_in_browser_outlined,
           color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.4),
@@ -594,12 +547,12 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
         ),
         PageBanner(
           pref: 'notif_revoke_banner_dismissed',
-          dismissed: _revokeBannerDismissed,
+          dismissed: revokeBannerDismissed,
           text: 'Disabling monitoring here does not revoke the app\'s Android notification listener permission. '
               'To revoke, go to Android Settings.',
           icon: Icons.info,
           onDismiss: () async {
-            if (mounted) setState(() => _revokeBannerDismissed = true);
+            if (mounted) setState(() => revokeBannerDismissed = true);
           },
           color: Theme.of(context).colorScheme.tertiaryContainer.withValues(alpha: 0.45),
           textColor: Theme.of(context).colorScheme.onTertiaryContainer,
@@ -614,13 +567,13 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
                     for (final pkg in pkgs) ...[
                       AppGroupCard(
                         key: ValueKey(pkg),
-                        expanded: _expandedGroups[pkg] ?? false,
+                        expanded: expandedGroups[pkg] ?? false,
                         onToggleExpanded: () => setState(
-                            () => _expandedGroups[pkg] = !(_expandedGroups[pkg] ?? false)),
+                            () => expandedGroups[pkg] = !(expandedGroups[pkg] ?? false)),
                         packageName: pkg,
                         appName: groups[pkg]!.first.appName,
-                        iconBytes: _iconCache[pkg],
-                        appColor: _useAppColors ? _colorCache[pkg] : null,
+                        iconBytes: iconCache[pkg],
+                        appColor: useAppColors ? colorCache[pkg] : null,
                         subtitle: _subtitle(pkg, groups[pkg]!),
                         groupState: _groupState(pkg, groups[pkg]!),
                         hasIssue: _hasIssue(pkg, groups[pkg]!),
@@ -692,7 +645,7 @@ class _StatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    const activeColor = Colors.green;
+    final activeColor = context.appTheme.serviceRunning;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
@@ -701,13 +654,12 @@ class _StatusChip extends StatelessWidget {
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(enabled ? Icons.check_circle : Icons.cancel,
-            size: 11, color: enabled ? activeColor : cs.onSurfaceVariant),
+            size: AppSpacing.iconXs,
+            color: enabled ? activeColor : cs.onSurfaceVariant),
         const SizedBox(width: 3),
         Text(
           enabled ? 'Active' : 'Inactive',
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
+          style: AppTextStyles.metaLabelBold(context)?.copyWith(
             color: enabled ? activeColor : cs.onSurfaceVariant,
           ),
         ),
