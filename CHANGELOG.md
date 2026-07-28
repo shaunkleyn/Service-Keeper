@@ -15,6 +15,9 @@
 - ** Added **Report Issue** to easily report issues on Github
 - **Multi-select Apps and Services** to enable / disable
 
+#### Accessibility service health
+- **Periodic malfunctioning check** — `KeeperForegroundService` now schedules a recurring 15-minute check (`checkMalfunctioningA11yServices`) that queries `AccessibilityManager.getEnabledAccessibilityServiceList()` to detect accessibility services that are listed as enabled in settings but whose process is no longer bound by the system. Any such service is re-toggled in `enabled_accessibility_services` (removed then immediately re-added via Shizuku) to force Android to rebind it, and a repair notification is shown.
+
 #### Undo
 - **Undo snackbar** — toggling a group state shows a 10-second snackbar with an animated countdown progress bar and an Undo button.
 - **AppBar undo action** — the 3-dot menu shows "Undo: [last action]" while the snackbar is active.
