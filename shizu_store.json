@@ -1,0 +1,6 @@
+{
+  "app_name": "Service Keeper",
+  "package_name": "com.shaunkleyn.service_keeper",
+  "short_description": "Monitors and automatically restarts background services killed by the system.",
+  "icon_url": "https://raw.githubusercontent.com/you/repo/main/icon.png"
+}
