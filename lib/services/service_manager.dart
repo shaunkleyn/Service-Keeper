@@ -92,6 +92,10 @@ class ServiceManager {
       // When appRestartEnabled: skip the broadcast loop (can take 20+ seconds for apps
       // with many matching action strings like Life360) and go straight to app launch.
       // Broadcasts cannot start a non-exported JobIntentService anyway.
+      // This path only ever runs while Service Keeper itself is in the foreground
+      // (triggered from home_screen.dart), so the idle-relaunch gate that guards the
+      // automatic background paths doesn't apply here - the user is already looking
+      // at the app and asked for this restart directly.
       if (service.appRestartEnabled) {
         final launched = await _restartViaAppLaunch(service.packageName);
         if (launched) return (true, 'restart method: app launch');
@@ -110,7 +114,25 @@ class ServiceManager {
     return (true, null);
   }
 
+  /// Returns 'pkg/cls' of the currently foregrounded activity, or null.
+  Future<String?> _getForegroundApp() async {
+    final output = await _shizuku.exec('dumpsys activity activities');
+    if (output == null) return null;
+    final re = RegExp(
+      r'ResumedActivity: ActivityRecord\{(?:0x)?[0-9a-f]+ +u\d+ +([^\s/]+)/([^\s}]+)',
+      caseSensitive: false,
+    );
+    final match = re.firstMatch(output);
+    if (match == null) return null;
+    final pkg = match.group(1)!;
+    var cls = match.group(2)!;
+    if (cls.startsWith('.')) cls = pkg + cls;
+    return '$pkg/$cls';
+  }
+
   Future<bool> _restartViaAppLaunch(String packageName) async {
+    final previousForeground = await _getForegroundApp();
+
     // Resolve the exact launcher activity — `-p pkg` intent matching fails for apps
     // with non-standard launchers (e.g. Life360 uses com.life360.koko.LauncherNormal).
     final resolved = await _shizuku.exec(
@@ -127,7 +149,15 @@ class ServiceManager {
     final result = await _shizuku.exec('am start -n $component');
     if (result == null || result.toLowerCase().contains('error')) return false;
     await Future.delayed(const Duration(milliseconds: 1200));
-    await _shizuku.exec('input keyevent 3'); // HOME — minimize immediately
+
+    if (previousForeground != null && previousForeground != component) {
+      final restore = await _shizuku.exec('am start -n $previousForeground');
+      if (restore == null || restore.toLowerCase().contains('error')) {
+        await _shizuku.exec('input keyevent 3'); // fall back to HOME if restore failed
+      }
+    } else {
+      await _shizuku.exec('input keyevent 3'); // no prior app known, or it was already the target
+    }
     return true;
   }
 

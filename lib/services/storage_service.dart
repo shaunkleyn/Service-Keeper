@@ -155,6 +155,34 @@ class StorageService {
     await prefs.setBool(_globalIntervalEnabledKey, enabled);
   }
 
+  // ── App relaunch idle gating ────────────────────────────────────────────
+  // Read natively (with the "flutter." prefix) by MonitorWorker.kt and
+  // KeeperForegroundService.kt before attempting the app-relaunch fallback.
+  // Mode is one of: 'always', 'no_foreground_app', 'inactivity', 'locked'.
+
+  static const _relaunchIdleModeKey = 'relaunch_idle_mode';
+  static const _relaunchInactivitySecondsKey = 'relaunch_inactivity_seconds';
+
+  Future<String> getRelaunchIdleMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_relaunchIdleModeKey) ?? 'inactivity';
+  }
+
+  Future<void> setRelaunchIdleMode(String mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_relaunchIdleModeKey, mode);
+  }
+
+  Future<int> getRelaunchInactivitySeconds() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_relaunchInactivitySecondsKey) ?? 60;
+  }
+
+  Future<void> setRelaunchInactivitySeconds(int seconds) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_relaunchInactivitySecondsKey, seconds);
+  }
+
   // ── Bulk-save for backup/restore ──────────────────────────────────────────
 
   Future<void> saveA11yMonitoredKeys(Set<String> keys) async {

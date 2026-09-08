@@ -1,8 +1,17 @@
 # Changelog
 
-## [Unreleased] — 2026-07-25/26
+## [Unreleased], 2026-07-25 to 2026-09-08
 
 ### Added
+
+#### App relaunch
+- **Restore previous app after relaunch**: when a service can only be recovered by fully relaunching its app, Service Keeper now captures whatever app was in the foreground beforehand and switches back to it afterward, instead of always going to the home screen.
+- **Idle-aware relaunch gating**: new Settings > App relaunch section controls when that relaunch is allowed to interrupt you:
+  - **Always**: relaunch immediately, even mid-use
+  - **No app open**: only when the home screen is showing
+  - **No activity for a while**: only after N seconds with no taps or scrolls anywhere on the device (15s to 5min presets), detected via `PowerManager`'s own activity timer (`dumpsys power`), not `UsageEvents`, since the latter doesn't fire reliably during ongoing scrolling
+  - **When locked**: only right after you unlock the phone
+  - A relaunch blocked by the current setting is queued and retried automatically once idle, polled every 10s, or immediately on unlock for the locked mode, instead of waiting for the next incidental service-stop detection
 
 #### UI / Cards
 - **Reusable `AppGroupCard` widget** — sliver-based expandable card with sticky header, used across all three monitoring screens (Services, Accessibility, Notifications). Replaces three separate header delegate implementations.

@@ -22,6 +22,7 @@ An Android app that monitors and automatically restarts background services kill
 - **Audit log** — full timestamped history of every detected stop, restart attempt, and outcome
 - **Boot persistence** — reschedules all monitors after device reboot
 - **Per-app notifications** — toggle restart alerts per service
+- **App relaunch, without stealing focus**: when a service can only be recovered by relaunching its whole app, Service Keeper switches back to whatever you were doing afterward, and lets you control when that's allowed to happen (always, only when idle, only when locked, etc.)
 
 ---
 
@@ -101,6 +102,14 @@ Shell commands used:
 
 **Service detection**
 Parses `dumpsys activity services` output with a regex that handles both standard and Android 16 output format (which appends ` c:<caller>` before `}`).
+
+**App relaunch and idle detection**
+When a service can only be recovered by relaunching its whole app, Service Keeper captures the currently foregrounded app first, launches the target, waits briefly, then switches back to what you were on. Whether that's allowed to happen right away depends on the configured mode:
+- No app open: compares the foreground app against the resolved launcher/home package
+- No activity for a while: reads `PowerManager`'s activity timer straight from `dumpsys power`, since taps and scrolls reset that timer directly, unlike `UsageEvents`, which doesn't fire reliably during ongoing scrolling
+- When locked: checks `KeyguardManager.isKeyguardLocked`, and defers via a small queue that drains on the next `ACTION_USER_PRESENT` broadcast
+
+A blocked relaunch is queued and retried automatically once the device becomes idle, so nothing silently gets skipped.
 
 ---
 

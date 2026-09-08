@@ -57,7 +57,12 @@ object ShizukuExecutor {
         }.toList()
     }
 
-    fun startServiceDetailed(packageName: String, serviceClass: String, appRestartEnabled: Boolean = false): StartResult {
+    fun startServiceDetailed(
+        packageName: String,
+        serviceClass: String,
+        appRestartEnabled: Boolean = false,
+        allowAppRestartNow: Boolean = true
+    ): StartResult {
         val component = "$packageName/$serviceClass"
         val result = exec("am start-foreground-service -n $component")
         if (result == null || result.contains("Error", ignoreCase = true)) {
@@ -67,20 +72,25 @@ object ShizukuExecutor {
                 return StartResult(true, "restart method: direct startservice")
             }
 
+            var appRestartSkipped = false
             if (appRestartEnabled) {
-                val launched = restartViaAppLaunch(packageName)
-                // Keep behavior consistent with manual restart path in Dart:
-                // app launch fallback is considered a successful recovery trigger
-                // even when service visibility in dumpsys is delayed.
-                if (launched) {
-                    return StartResult(true, "restart method: app launch")
+                if (allowAppRestartNow) {
+                    val launched = restartViaAppLaunch(packageName)
+                    // Keep behavior consistent with manual restart path in Dart.
+                    // App launch fallback is considered a successful recovery trigger
+                    // even when service visibility in dumpsys is delayed.
+                    if (launched) {
+                        return StartResult(true, "restart method: app launch")
+                    }
+                } else {
+                    appRestartSkipped = true
                 }
             }
 
             val broadcast = tryBroadcastStartFallback(packageName, serviceClass)
             if (broadcast.ok) return broadcast
 
-            // Accessibility services cannot be started via am — toggle the settings key instead
+            // Accessibility services cannot be started via am, toggle the settings key instead.
             val a11y = tryAccessibilityToggle(packageName, serviceClass)
             if (a11y.ok) return a11y
 
@@ -90,6 +100,7 @@ object ShizukuExecutor {
                 parseAmError(fallback) ?: fallback.trim()
             }
             val parts = listOfNotNull(
+                "app relaunch skipped: device in active use".takeIf { appRestartSkipped },
                 broadcast.detail?.takeIf { it.isNotBlank() }?.let { "broadcast fallback failed: $it" },
                 a11y.detail?.takeIf { it.isNotBlank() }
             )
@@ -99,7 +110,49 @@ object ShizukuExecutor {
         return StartResult(true, "restart method: direct start-foreground-service")
     }
 
+    /** Returns (packageName, className) of the currently foregrounded activity, or null. */
+    fun getForegroundApp(): Pair<String, String>? {
+        val output = exec("dumpsys activity activities") ?: return null
+        val re = Regex(
+            """ResumedActivity: ActivityRecord\{(?:0x)?[0-9a-f]+ +u\d+ +([^\s/]+)/([^\s}]+)""",
+            RegexOption.IGNORE_CASE
+        )
+        val match = re.find(output) ?: return null
+        val pkg = match.groupValues[1]
+        var cls = match.groupValues[2]
+        if (cls.startsWith(".")) cls = pkg + cls
+        return Pair(pkg, cls)
+    }
+
+    private fun isErrorOutput(output: String?): Boolean =
+        output == null || output.contains("error", ignoreCase = true)
+
+    /**
+     * Starts [targetComponent], waits for it to settle, then returns to whatever was
+     * in the foreground before ([previousForeground], from [getForegroundApp]) - or
+     * HOME if there was nothing to restore or restoring it failed. Shared by every
+     * app-relaunch fallback path (Dart's manual restart mirrors this same sequence).
+     */
+    fun launchAndRestore(targetComponent: String, previousForeground: Pair<String, String>?): Boolean {
+        val result = exec("am start -n $targetComponent")
+        if (isErrorOutput(result)) return false
+        android.os.SystemClock.sleep(1200)
+
+        val previousComponent = previousForeground?.let { "${it.first}/${it.second}" }
+        if (previousComponent != null && previousComponent != targetComponent) {
+            val restore = exec("am start -n $previousComponent")
+            if (isErrorOutput(restore)) {
+                exec("input keyevent 3") // fall back to HOME if restore failed
+            }
+        } else {
+            exec("input keyevent 3") // no prior app known, or it was already the target
+        }
+        return true
+    }
+
     private fun restartViaAppLaunch(packageName: String): Boolean {
+        val previousForeground = getForegroundApp()
+
         val resolved = exec(
             "cmd package resolve-activity --brief " +
                 "-a android.intent.action.MAIN " +
@@ -110,11 +163,7 @@ object ShizukuExecutor {
             ?.map { it.trim() }
             ?.lastOrNull { it.contains('/') } ?: return false
 
-        val result = exec("am start -n $component")
-        if (result == null || result.lowercase().contains("error")) return false
-        android.os.SystemClock.sleep(1200)
-        exec("input keyevent 3")
-        return true
+        return launchAndRestore(component, previousForeground)
     }
 
     private fun tryAccessibilityToggle(packageName: String, serviceClass: String): StartResult {

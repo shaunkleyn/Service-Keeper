@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../app_settings_notifier.dart';
 import '../services/app_info_service.dart';
+import '../services/storage_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -11,10 +12,14 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  final _storage = StorageService();
+
   bool _useAppColors = false;
   bool _useMaterialYou = false;
   bool _globalIntervalEnabled = true;
   int _defaultInterval = 15;
+  String _relaunchIdleMode = 'inactivity';
+  int _relaunchInactivitySeconds = 60;
 
   static const _intervalPresets = [
     (label: '5 minutes', minutes: 5),
@@ -26,6 +31,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     (label: '4 hours', minutes: 240),
   ];
 
+  static const _inactivitySecondsPresets = [
+    (label: '15 seconds', seconds: 15),
+    (label: '30 seconds', seconds: 30),
+    (label: '1 minute', seconds: 60),
+    (label: '2 minutes', seconds: 120),
+    (label: '5 minutes', seconds: 300),
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -34,11 +47,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
+    final relaunchIdleMode = await _storage.getRelaunchIdleMode();
+    final relaunchInactivitySeconds = await _storage.getRelaunchInactivitySeconds();
+    if (!mounted) return;
     setState(() {
       _useAppColors = prefs.getBool('use_app_colors') ?? false;
       _useMaterialYou = prefs.getBool('use_material_you') ?? false;
       _globalIntervalEnabled = prefs.getBool('global_interval_enabled') ?? true;
       _defaultInterval = prefs.getInt('default_check_interval') ?? 15;
+      _relaunchIdleMode = relaunchIdleMode;
+      _relaunchInactivitySeconds = relaunchInactivitySeconds;
     });
   }
 
@@ -104,6 +122,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('default_check_interval', minutes);
     setState(() => _defaultInterval = minutes);
+  }
+
+  Future<void> _setRelaunchIdleMode(String mode) async {
+    await _storage.setRelaunchIdleMode(mode);
+    setState(() => _relaunchIdleMode = mode);
+  }
+
+  Future<void> _setRelaunchInactivitySeconds(int seconds) async {
+    await _storage.setRelaunchInactivitySeconds(seconds);
+    setState(() => _relaunchInactivitySeconds = seconds);
   }
 
   @override
@@ -283,6 +311,80 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ),
+          const Divider(height: 1),
+          _sectionHeader(context, 'App relaunch'),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 1),
+                    child: Icon(Icons.info_outline,
+                        color: theme.colorScheme.onSurfaceVariant, size: 16),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'When a service can only be recovered by fully relaunching '
+                      'its app, Service Keeper briefly switches to it and back. '
+                      'Choose when that\'s allowed to happen.',
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          RadioListTile<String>(
+            title: const Text('Always'),
+            subtitle: const Text('Relaunch immediately, even while you\'re using the phone.'),
+            value: 'always',
+            groupValue: _relaunchIdleMode,
+            onChanged: (v) => _setRelaunchIdleMode(v!),
+          ),
+          RadioListTile<String>(
+            title: const Text('No app open'),
+            subtitle: const Text('Only when the home screen is showing, no app in front.'),
+            value: 'no_foreground_app',
+            groupValue: _relaunchIdleMode,
+            onChanged: (v) => _setRelaunchIdleMode(v!),
+          ),
+          RadioListTile<String>(
+            title: const Text('No activity for a while'),
+            subtitle: const Text('Only after you\'ve stopped tapping or scrolling.'),
+            value: 'inactivity',
+            groupValue: _relaunchIdleMode,
+            onChanged: (v) => _setRelaunchIdleMode(v!),
+          ),
+          if (_relaunchIdleMode == 'inactivity')
+            Padding(
+              padding: const EdgeInsets.fromLTRB(32, 0, 16, 8),
+              child: Wrap(
+                spacing: 8,
+                children: _inactivitySecondsPresets
+                    .map((p) => ChoiceChip(
+                          label: Text(p.label),
+                          selected: _relaunchInactivitySeconds == p.seconds,
+                          onSelected: (_) => _setRelaunchInactivitySeconds(p.seconds),
+                        ))
+                    .toList(),
+              ),
+            ),
+          RadioListTile<String>(
+            title: const Text('When locked'),
+            subtitle: const Text('Only right after you unlock the phone.'),
+            value: 'locked',
+            groupValue: _relaunchIdleMode,
+            onChanged: (v) => _setRelaunchIdleMode(v!),
+          ),
           const Divider(height: 1),
           _sectionHeader(context, 'Banners'),
           ListTile(

@@ -33,6 +33,7 @@ class KeeperForegroundService : Service() {
         private const val A11Y_NOTIF_OFF_KEY = "flutter.a11y_notif_off"
         private const val NOTIF_LISTENER_NOTIF_OFF_KEY = "flutter.notif_listener_notif_off"
         private const val AUDIT_KEY = "flutter.pending_audit_events"
+        private const val RELAUNCH_POLL_INTERVAL_MS = 10_000L
         private var notifId = 2000
 
         fun start(context: Context, serviceCount: Int? = null) {
@@ -58,6 +59,17 @@ class KeeperForegroundService : Service() {
     private var logcatThread: Thread? = null
     private var a11yObserver: ContentObserver? = null
     private var notifObserver: ContentObserver? = null
+    private var unlockReceiver: android.content.BroadcastReceiver? = null
+
+    private val relaunchPollHandler = Handler(Looper.getMainLooper())
+    private val relaunchPollRunnable: Runnable = object : Runnable {
+        override fun run() {
+            // pollPendingRelaunches() does its own cheap-check-then-maybe-spawn-thread.
+            // No need to unconditionally spawn a thread every tick here too.
+            pollPendingRelaunches()
+            relaunchPollHandler.postDelayed(this, RELAUNCH_POLL_INTERVAL_MS)
+        }
+    }
 
     // Tracks packages currently being app-restarted to avoid duplicate launches
     private val appRestartingPackages: MutableSet<String> = Collections.synchronizedSet(mutableSetOf())
@@ -93,6 +105,8 @@ class KeeperForegroundService : Service() {
         Shizuku.addBinderReceivedListenerSticky(binderReceivedListener)
         startA11yObserver()
         startNotifObserver()
+        startUnlockReceiver()
+        relaunchPollHandler.postDelayed(relaunchPollRunnable, RELAUNCH_POLL_INTERVAL_MS)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -109,9 +123,58 @@ class KeeperForegroundService : Service() {
         stopLogcatMonitor()
         stopA11yObserver()
         stopNotifObserver()
+        stopUnlockReceiver()
+        relaunchPollHandler.removeCallbacks(relaunchPollRunnable)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    // ── Deferred relaunch on unlock ("locked" idle mode) ───────────────────────
+
+    private fun startUnlockReceiver() {
+        if (unlockReceiver != null) return
+        val receiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(ctx: Context, intent: Intent) {
+                // Only the "locked" mode treats unlock itself as the idle signal - for
+                // other modes, unlocking means the user is now active, so let the
+                // periodic poll re-evaluate isIdle() normally instead of draining blind.
+                if (DeviceIdleChecker.getConfiguredMode(applicationContext) != "locked") return
+                Thread { drainPendingRelaunches() }.start()
+            }
+        }
+        unlockReceiver = receiver
+        registerReceiver(receiver, android.content.IntentFilter(Intent.ACTION_USER_PRESENT))
+    }
+
+    private fun stopUnlockReceiver() {
+        unlockReceiver?.let { unregisterReceiver(it) }
+        unlockReceiver = null
+    }
+
+    private fun pollPendingRelaunches() {
+        if (!PendingRelaunchQueue.hasPending(applicationContext)) return
+        Thread {
+            if (DeviceIdleChecker.isIdleFromPrefs(applicationContext)) drainPendingRelaunches()
+        }.start()
+    }
+
+    private fun drainPendingRelaunches() {
+        val pending = PendingRelaunchQueue.drainAll(applicationContext)
+        for (entry in pending) {
+            appendAuditEvent(entry.packageName, entry.serviceClass, entry.label, "RESTART_ATTEMPTED", "AUTOMATIC", "deferred relaunch, device now idle")
+            val appStarted = restartApp(entry.packageName)
+            if (appStarted) {
+                appendAuditEvent(entry.packageName, entry.serviceClass, entry.label, "RESTART_SUCCESS", "AUTOMATIC", "restart method: app launch (deferred)")
+                if (entry.notifEnabled) {
+                    pendingServiceNotifs.add(getAppName(entry.packageName))
+                    notifDebounceHandler.removeCallbacks(flushServiceNotifs)
+                    notifDebounceHandler.postDelayed(flushServiceNotifs, 1500)
+                }
+            } else {
+                appendAuditEvent(entry.packageName, entry.serviceClass, entry.label, "RESTART_FAILED", "AUTOMATIC", "deferred relaunch failed")
+            }
+        }
+    }
 
     // ── Accessibility service guardian ────────────────────────────────────────
 
@@ -463,7 +526,15 @@ class KeeperForegroundService : Service() {
             appendAuditEvent(pkg, cls, label, "DETECTED_STOPPED", "AUTOMATIC", "logcat")
             appendAuditEvent(pkg, cls, label, "RESTART_ATTEMPTED", "AUTOMATIC", null)
 
-            val result = ShizukuExecutor.startServiceDetailed(pkg, cls, appRestartEnabled)
+            val allowAppRestartNow = DeviceIdleChecker.isIdleFromPrefs(applicationContext)
+            if (appRestartEnabled && !allowAppRestartNow) {
+                PendingRelaunchQueue.enqueue(
+                    applicationContext,
+                    PendingRelaunchQueue.Entry(pkg, cls, label, notifEnabled)
+                )
+            }
+
+            val result = ShizukuExecutor.startServiceDetailed(pkg, cls, appRestartEnabled, allowAppRestartNow)
             if (result.ok) {
                 appendAuditEvent(pkg, cls, label, "RESTART_SUCCESS", "AUTOMATIC", result.detail)
                 if (notifEnabled) {
@@ -471,7 +542,7 @@ class KeeperForegroundService : Service() {
                     notifDebounceHandler.removeCallbacks(flushServiceNotifs)
                     notifDebounceHandler.postDelayed(flushServiceNotifs, 1500)
                 }
-            } else if (appRestartEnabled) {
+            } else if (appRestartEnabled && allowAppRestartNow) {
                 val appStarted = restartApp(pkg)
                 if (appStarted) {
                     appendAuditEvent(pkg, cls, label, "RESTART_SUCCESS", "AUTOMATIC", "app restarted")
@@ -495,13 +566,9 @@ class KeeperForegroundService : Service() {
             val launchIntent = applicationContext.packageManager.getLaunchIntentForPackage(pkg)
                 ?: return false
             val component = launchIntent.component ?: return false
-            val started = ShizukuExecutor.exec(
-                "am start -n ${component.packageName}/${component.className}"
-            )
-            if (started == null || started.contains("Error", ignoreCase = true)) return false
-            Thread.sleep(1200)
-            ShizukuExecutor.exec("input keyevent 3") // HOME — minimise immediately
-            true
+            val targetComponent = "${component.packageName}/${component.className}"
+            val previousForeground = ShizukuExecutor.getForegroundApp()
+            ShizukuExecutor.launchAndRestore(targetComponent, previousForeground)
         } finally {
             appRestartingPackages.remove(pkg)
         }

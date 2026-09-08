@@ -135,10 +135,18 @@ class MonitorWorker(context: Context, params: WorkerParameters) :
                 "AUTOMATIC",
                 "Worker restart attempt (app restart fallback: ${if (appRestartEnabled) "on" else "off"})"
             )
-            val start = ShizukuExecutor.startServiceDetailed(pkg, cls, appRestartEnabled)
+            val notifEnabled = notificationsEnabledFor(pkg, cls)
+            val allowAppRestartNow = DeviceIdleChecker.isIdleFromPrefs(applicationContext)
+            if (appRestartEnabled && !allowAppRestartNow) {
+                PendingRelaunchQueue.enqueue(
+                    applicationContext,
+                    PendingRelaunchQueue.Entry(pkg, cls, label, notifEnabled)
+                )
+            }
+            val start = ShizukuExecutor.startServiceDetailed(pkg, cls, appRestartEnabled, allowAppRestartNow)
             if (start.ok) {
                 appendAuditEvent(pkg, cls, label, "RESTART_SUCCESS", "AUTOMATIC", start.detail)
-                if (notificationsEnabledFor(pkg, cls)) {
+                if (notifEnabled) {
                     sendNotification(appName, "Background service was stopped and has been restarted.")
                 }
             } else {
