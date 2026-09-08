@@ -1,4 +1,11 @@
 # Service Keeper
+<!-- HTML format (allows you to adjust the size and align it centered) -->
+<p align="center">
+  <img src="android/app/src/main/res/playstore-icon.png" alt="Project Logo" width="150">
+</p>
+
+<!-- Standard Markdown format -->
+<!--![Project Logo](android/app/src/main/res/playstore-icon.png)-->
 
 An Android app that monitors and automatically restarts background services killed by the system. Built with Flutter and powered by [Shizuku](https://shizuku.rikka.app/) for privileged shell access.
 
