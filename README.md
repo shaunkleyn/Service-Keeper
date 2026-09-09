@@ -451,7 +451,7 @@ GNU General Public License for more details.
 ---
 
 <p align="center">
-  Made with ❤️ and 🤖 • <a href="https://github.com/shaunkleyn/Service-Keeper/issues">Report Bug</a> • <a href="https://github.com/shaunkleyn/Service-Keeper/issues">Request Feature</a>
+  Made with ❤️ and 🤖 • <a href="https://github.com/shaunkleyn/Service-Keeper/issues/new?labels=bug">Report Bug</a> • <a href="https://github.com/shaunkleyn/Service-Keeper/issues/new?labels=enhancement">Request Feature</a>
 </p>
 
 <p align="center">
