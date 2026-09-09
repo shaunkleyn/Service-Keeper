@@ -7,7 +7,18 @@
   "short_description": "Monitors and automatically restarts background services killed by the system.",
   "detailed_description": "Service Keeper watches Android background services, accessibility services, and notification listeners, and automatically restarts or re-enables them when the system kills or disables them. Built with Flutter and powered by Shizuku for privileged shell access.\n\n**Key Features:**\n- Monitors background services and restarts them the moment they're killed.\n- Monitors accessibility services and re-enables them if Android revokes access.\n- Monitors notification listeners and re-enables them if disabled by the system.\n- Configurable per-service check interval (5 minutes to 4+ hours).\n- Full timestamped audit log of every detected stop, restart attempt, and outcome.\n- Reschedules all monitors automatically after device reboot.\n- Per-service restart notifications you can toggle individually.",
   "developer_message": "Built to stop Android from silently killing the background services I actually need running. Open source, feedback and issues welcome.",
-
+  "screenshots": [
+    "https://raw.githubusercontent.com/shaunkleyn/Service-Keeper/main/screenshots/1la.jpg",
+    "https://raw.githubusercontent.com/shaunkleyn/Service-Keeper/main/screenshots/1lb.jpg",
+    "https://raw.githubusercontent.com/shaunkleyn/Service-Keeper/main/screenshots/1lb1.jpg",
+    "https://raw.githubusercontent.com/shaunkleyn/Service-Keeper/main/screenshots/1lc.jpg",
+    "https://raw.githubusercontent.com/shaunkleyn/Service-Keeper/main/screenshots/1da.jpg",
+    "https://raw.githubusercontent.com/shaunkleyn/Service-Keeper/main/screenshots/1db.jpg",
+    "https://raw.githubusercontent.com/shaunkleyn/Service-Keeper/main/screenshots/2la.jpg",
+    "https://raw.githubusercontent.com/shaunkleyn/Service-Keeper/main/screenshots/2da.jpg",
+    "https://raw.githubusercontent.com/shaunkleyn/Service-Keeper/main/screenshots/3da.jpg",
+    "https://raw.githubusercontent.com/shaunkleyn/Service-Keeper/main/screenshots/4da.jpg"
+  ],
   "version_name": "1.0.3-beta",
   "min_sdk": 26,
   "target_sdk": 35,
