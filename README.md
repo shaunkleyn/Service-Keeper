@@ -3,20 +3,24 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/shaunkleyn/Service-Keeper/actions/workflows/build.yml"><img src="https://github.com/shaunkleyn/Service-Keeper/actions/workflows/build.yml/badge.svg" alt="Build Status"></a>
-  <a href="https://github.com/shaunkleyn/Service-Keeper/releases"><img src="https://img.shields.io/github/v/release/shaunkleyn/Service-Keeper" alt="Latest Release"></a>
-  <a href="https://github.com/shaunkleyn/Service-Keeper/releases"><img src="https://img.shields.io/github/downloads/shaunkleyn/Service-Keeper/total" alt="Downloads"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPL v3"></a>
-  <a href="https://github.com/shaunkleyn/Service-Keeper/stargazers"><img src="https://img.shields.io/github/stars/shaunkleyn/Service-Keeper?style=social" alt="GitHub stars"></a>
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/Platform-Android-green.svg" alt="Platform">
-  <img src="https://img.shields.io/badge/API-26%2B-brightgreen.svg" alt="API Level">
-  <img src="https://img.shields.io/badge/Flutter-3.24%2B-02569B?logo=flutter" alt="Flutter">
-  <img src="https://img.shields.io/badge/Kotlin-1.9%2B-7F52FF?logo=kotlin" alt="Kotlin">
-  <img src="https://img.shields.io/github/last-commit/shaunkleyn/Service-Keeper" alt="Last Commit">
-  <img src="https://img.shields.io/github/issues/shaunkleyn/Service-Keeper" alt="Issues">
+  <!-- Stack / Technical Chips -->
+  <img alt="Android API" src="https://img.shields.io/badge/Api%2026+-50f270?logo=android&logoColor=black&style=for-the-badge"/>
+  <img alt="Flutter" src="https://img.shields.io/badge/Flutter-02569B?logo=flutter&logoColor=white&style=for-the-badge"/>
+  <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-7F52FF?logo=kotlin&logoColor=white&style=for-the-badge"/>
+  <br/>
+  <!-- Build / Activity -->
+  <a href="https://github.com/shaunkleyn/Service-Keeper/actions/workflows/build.yml"><img alt="Build Status" src="https://img.shields.io/github/actions/workflow/status/shaunkleyn/Service-Keeper/build.yml?style=for-the-badge&logo=githubactions&logoColor=white"/></a>
+  <img alt="Last Commit" src="https://img.shields.io/github/last-commit/shaunkleyn/Service-Keeper?style=for-the-badge"/>
+  <img alt="Issues" src="https://img.shields.io/github/issues/shaunkleyn/Service-Keeper?style=for-the-badge"/>
+  <br/>
+  <!-- Stars -->
+  <a href="https://github.com/shaunkleyn/Service-Keeper/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/shaunkleyn/Service-Keeper?color=ffff00&style=for-the-badge&labelColor=a1a116"/></a>
+  <!-- Downloads -->
+  <a href="https://github.com/shaunkleyn/Service-Keeper/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/shaunkleyn/Service-Keeper/total?color=00bcd4&style=for-the-badge&labelColor=006064"/></a>
+  <br/>
+  <!-- Distribution -->
+  <a href="https://github.com/shaunkleyn/Service-Keeper/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/shaunkleyn/Service-Keeper?color=a1168e&include_prereleases&logo=github&style=for-the-badge&labelColor=700f63"/></a>
+  <a href="LICENSE"><img alt="License: GPL v3" src="https://img.shields.io/badge/License-GPLv3-blue.svg?style=for-the-badge"/></a>
 </p>
 
 <p align="center">
