@@ -5,6 +5,7 @@
 <p align="center">
   <a href="https://github.com/shaunkleyn/Service-Keeper/actions/workflows/build.yml"><img src="https://github.com/shaunkleyn/Service-Keeper/actions/workflows/build.yml/badge.svg" alt="Build Status"></a>
   <a href="https://github.com/shaunkleyn/Service-Keeper/releases"><img src="https://img.shields.io/github/v/release/shaunkleyn/Service-Keeper" alt="Latest Release"></a>
+  <a href="https://github.com/shaunkleyn/Service-Keeper/releases"><img src="https://img.shields.io/github/downloads/shaunkleyn/Service-Keeper/total" alt="Downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPL v3"></a>
   <a href="https://github.com/shaunkleyn/Service-Keeper/stargazers"><img src="https://img.shields.io/github/stars/shaunkleyn/Service-Keeper?style=social" alt="GitHub stars"></a>
 </p>
