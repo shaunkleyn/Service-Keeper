@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../app_settings_notifier.dart';
-import '../services/app_info_service.dart';
 import '../services/storage_service.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -15,7 +14,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _storage = StorageService();
 
   bool _useAppColors = false;
-  bool _useMaterialYou = false;
   bool _globalIntervalEnabled = true;
   int _defaultInterval = 15;
   String _relaunchIdleMode = 'inactivity';
@@ -53,7 +51,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     setState(() {
       _useAppColors = prefs.getBool('use_app_colors') ?? false;
-      _useMaterialYou = prefs.getBool('use_material_you') ?? false;
       _globalIntervalEnabled = prefs.getBool('global_interval_enabled') ?? true;
       _defaultInterval = prefs.getInt('default_check_interval') ?? 15;
       _relaunchIdleMode = relaunchIdleMode;
@@ -66,19 +63,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await prefs.setBool('use_app_colors', value);
     colorfulCardsNotifier.value = value;
     setState(() => _useAppColors = value);
-  }
-
-  Future<void> _setMaterialYou(bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('use_material_you', value);
-    if (value) {
-      wallpaperSeedNotifier.value =
-          await AppInfoService.getWallpaperSeedColor();
-    } else {
-      wallpaperSeedNotifier.value = null;
-    }
-    materialYouNotifier.value = value;
-    setState(() => _useMaterialYou = value);
   }
 
   Future<void> _setGlobalIntervalEnabled(bool value) async {
