@@ -1,0 +1,19 @@
+Service Keeper monitors background services, accessibility services, and notification listeners killed or disabled by the system, and automatically restarts or re-enables them using Shizuku for privileged shell access (no root required).
+
+Features:
+
+* Monitors background services and restarts them when killed
+* Monitors accessibility services and re-enables them if revoked
+* Monitors notification listeners and re-enables them if disabled
+* Configurable per-service check interval, from 5 minutes to 4+ hours
+* Full timestamped audit log of every detected stop, restart attempt, and outcome
+* Reschedules all monitors automatically after a device reboot
+* Per-app toggle for restart notifications
+* App relaunch that restores whatever app you were using afterward, with configurable timing (always, only when idle, only when locked, etc.)
+
+Requirements:
+
+* Android 8.0 (API 26) or newer
+* Shizuku, installed and running (paired via Wireless Debugging or root)
+
+Service Keeper does not require or request any network permissions and does not collect or transmit any data.

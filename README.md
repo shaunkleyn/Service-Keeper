@@ -11,6 +11,18 @@ An Android app that monitors and automatically restarts background services kill
 
 > **Disclosure:** This project was built with significant AI assistance (Claude). All code has been reviewed and tested on a physical device (Android 16, API 36).
 
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+
+---
+
+## Installation
+
+Service Keeper is free and open source software, and is 100% offline (no network permissions, no analytics, no ads).
+
+- **[Obtainium](https://github.com/ImranR98/Obtainium):** add this repo (`https://github.com/shaunkleyn/service_keeper`) as an app source. Obtainium tracks the GitHub Releases page and installs the universal APK.
+- **F-Droid / IzzyOnDroid:** not yet listed. Metadata for submission lives in [`fastlane/metadata/android`](fastlane/metadata/android/en-US). Once accepted, the app will be installable directly from those repos/clients.
+- **Manual:** download the latest release APK matching your device's ABI (or the universal APK) from the [Releases](https://github.com/shaunkleyn/service_keeper/releases) page.
+
 ---
 
 ## What it does
@@ -133,4 +145,4 @@ This project was prototyped and developed with heavy use of Claude (Anthropic). 
 
 ## License
 
-MIT
+[GNU General Public License v3.0 or later](LICENSE)

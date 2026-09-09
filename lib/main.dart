@@ -1,7 +1,6 @@
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 import 'app_settings_notifier.dart';
@@ -97,7 +96,7 @@ ThemeData _buildLight(ColorScheme? dynamic, Color? seed) {
     blendLevel: 5,
     subThemesData: _subThemes,
   ).toTheme.copyWith(
-    textTheme: GoogleFonts.interTextTheme(ThemeData.light().textTheme),
+    textTheme: ThemeData.light().textTheme.apply(fontFamily: 'Inter'),
   );
 }
 
@@ -110,7 +109,7 @@ ThemeData _buildDark(ColorScheme? dynamic, Color? seed) {
     blendLevel: 10,
     subThemesData: _subThemes,
   ).toTheme.copyWith(
-    textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
+    textTheme: ThemeData.dark().textTheme.apply(fontFamily: 'Inter'),
   );
 }
 
