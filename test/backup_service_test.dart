@@ -43,18 +43,19 @@ void main() {
       return BackupData(
         version: BackupService.currentVersion,
         exportedAt: DateTime(2025, 6, 1, 12),
-        services: services ?? [
-          const MonitoredService(
-            packageName: 'com.example.app',
-            serviceClass: 'com.example.app.MyService',
-            displayLabel: 'My Service',
-            appName: 'Example',
-            intervalMinutes: 15,
-            enabled: true,
-            notificationsEnabled: true,
-            appRestartEnabled: false,
-          ),
-        ],
+        services: services ??
+            [
+              const MonitoredService(
+                packageName: 'com.example.app',
+                serviceClass: 'com.example.app.MyService',
+                displayLabel: 'My Service',
+                appName: 'Example',
+                intervalMinutes: 15,
+                enabled: true,
+                notificationsEnabled: true,
+                appRestartEnabled: false,
+              ),
+            ],
         a11yMonitoredKeys: {'com.example.app/com.example.app.A11yService'},
         notifMonitoredKeys: {'com.example.app/com.example.app.NotifService'},
         a11yNotifOffKeys: {},
@@ -83,14 +84,17 @@ void main() {
       expect(restored.services.length, 1);
       expect(restored.services[0].packageName, 'com.example.app');
       expect(restored.services[0].enabled, true);
-      expect(restored.a11yMonitoredKeys, {'com.example.app/com.example.app.A11yService'});
-      expect(restored.notifMonitoredKeys, {'com.example.app/com.example.app.NotifService'});
+      expect(restored.a11yMonitoredKeys,
+          {'com.example.app/com.example.app.A11yService'});
+      expect(restored.notifMonitoredKeys,
+          {'com.example.app/com.example.app.NotifService'});
       expect(restored.settings.useAppColors, true);
       expect(restored.settings.defaultCheckInterval, 30);
     });
 
     test('decode version 1 — no a11y/notif keys, default settings', () {
-      const v1 = '{"version":1,"services":[{"packageName":"com.a","serviceClass":"com.a.S","displayLabel":"S","intervalMinutes":15,"enabled":true,"notificationsEnabled":true,"appRestartEnabled":false}]}';
+      const v1 =
+          '{"version":1,"services":[{"packageName":"com.a","serviceClass":"com.a.S","displayLabel":"S","intervalMinutes":15,"enabled":true,"notificationsEnabled":true,"appRestartEnabled":false}]}';
       final data = BackupService.decode(v1);
       expect(data.version, 1);
       expect(data.a11yMonitoredKeys, isEmpty);
@@ -99,7 +103,8 @@ void main() {
     });
 
     test('decode version 2 — has a11y/notif keys, default settings', () {
-      final v2 = '{"version":2,"exportedAt":"2025-01-01T00:00:00.000","services":[],'
+      final v2 =
+          '{"version":2,"exportedAt":"2025-01-01T00:00:00.000","services":[],'
           '"a11yMonitoredKeys":["com.foo/com.foo.A"],'
           '"notifMonitoredKeys":[],"a11yNotifOffKeys":[],'
           '"notifListenerNotifOffKeys":[],"auditLog":[]}';
@@ -112,16 +117,29 @@ void main() {
   group('BackupService.findMissingPackages', () {
     test('returns packages not in installed set', () {
       final services = [
-        const MonitoredService(packageName: 'com.installed', serviceClass: 'com.installed.S', displayLabel: 'S', intervalMinutes: 15),
-        const MonitoredService(packageName: 'com.missing', serviceClass: 'com.missing.S', displayLabel: 'S', intervalMinutes: 15),
+        const MonitoredService(
+            packageName: 'com.installed',
+            serviceClass: 'com.installed.S',
+            displayLabel: 'S',
+            intervalMinutes: 15),
+        const MonitoredService(
+            packageName: 'com.missing',
+            serviceClass: 'com.missing.S',
+            displayLabel: 'S',
+            intervalMinutes: 15),
       ];
-      final missing = BackupService.findMissingPackages(services, {'com.installed'});
+      final missing =
+          BackupService.findMissingPackages(services, {'com.installed'});
       expect(missing, {'com.missing'});
     });
 
     test('returns empty when all installed', () {
       final services = [
-        const MonitoredService(packageName: 'com.a', serviceClass: 'com.a.S', displayLabel: 'S', intervalMinutes: 15),
+        const MonitoredService(
+            packageName: 'com.a',
+            serviceClass: 'com.a.S',
+            displayLabel: 'S',
+            intervalMinutes: 15),
       ];
       expect(BackupService.findMissingPackages(services, {'com.a'}), isEmpty);
     });
@@ -134,13 +152,26 @@ void main() {
   group('BackupService.disableMissingServices', () {
     test('disables services for missing packages', () {
       final services = [
-        const MonitoredService(packageName: 'com.missing', serviceClass: 'com.missing.S', displayLabel: 'S', intervalMinutes: 15, enabled: true),
-        const MonitoredService(packageName: 'com.present', serviceClass: 'com.present.S', displayLabel: 'S', intervalMinutes: 15, enabled: true),
+        const MonitoredService(
+            packageName: 'com.missing',
+            serviceClass: 'com.missing.S',
+            displayLabel: 'S',
+            intervalMinutes: 15,
+            enabled: true),
+        const MonitoredService(
+            packageName: 'com.present',
+            serviceClass: 'com.present.S',
+            displayLabel: 'S',
+            intervalMinutes: 15,
+            enabled: true),
       ];
-      final result = BackupService.disableMissingServices(services, {'com.missing'});
+      final result =
+          BackupService.disableMissingServices(services, {'com.missing'});
       expect(result.length, 2);
-      expect(result.firstWhere((s) => s.packageName == 'com.missing').enabled, false);
-      expect(result.firstWhere((s) => s.packageName == 'com.present').enabled, true);
+      expect(result.firstWhere((s) => s.packageName == 'com.missing').enabled,
+          false);
+      expect(result.firstWhere((s) => s.packageName == 'com.present').enabled,
+          true);
     });
 
     test('preserves non-missing service fields', () {
@@ -174,7 +205,8 @@ void main() {
           lastRestarted: DateTime(2025),
         ),
       ];
-      final result = BackupService.disableMissingServices(services, {'com.missing'});
+      final result =
+          BackupService.disableMissingServices(services, {'com.missing'});
       expect(result[0].wasRunning, isNull);
       expect(result[0].lastChecked, isNull);
       expect(result[0].lastRestarted, isNull);
@@ -182,7 +214,11 @@ void main() {
 
     test('no-op when missingPackages is empty', () {
       final services = [
-        const MonitoredService(packageName: 'com.a', serviceClass: 'com.a.S', displayLabel: 'S', intervalMinutes: 15),
+        const MonitoredService(
+            packageName: 'com.a',
+            serviceClass: 'com.a.S',
+            displayLabel: 'S',
+            intervalMinutes: 15),
       ];
       final result = BackupService.disableMissingServices(services, {});
       expect(identical(result, services), true);
@@ -207,7 +243,8 @@ void main() {
 
     test('returns empty set when all keys are for missing packages', () {
       final keys = {'com.missing/com.missing.A'};
-      expect(BackupService.filterKeysForMissing(keys, {'com.missing'}), isEmpty);
+      expect(
+          BackupService.filterKeysForMissing(keys, {'com.missing'}), isEmpty);
     });
   });
 }
