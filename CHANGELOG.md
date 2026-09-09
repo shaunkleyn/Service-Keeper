@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.5] - 2026-09-09
+
+### Added
+- **GPLv3 license** and F-Droid/IzzyOnDroid fastlane metadata for FOSS store listings.
+
+### Changed
+- **Bundled Inter font** instead of fetching it at runtime via `google_fonts`, removing the only network dependency in the app.
+
 ## [1.0.4] - 2026-09-08
 
 ### Added

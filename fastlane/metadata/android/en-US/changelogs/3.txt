@@ -1,1 +1,0 @@
-Restore previous app after relaunch, idle-aware relaunch gating, reusable app group cards with 3-state group toggle, and other fixes. See CHANGELOG.md for full details.
