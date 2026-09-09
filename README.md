@@ -1,11 +1,5 @@
-# Service Keeper
-
 <p align="center">
-  <img src="android/app/src/main/res/playstore-icon.png" alt="Service Keeper Logo" width="150">
-</p>
-
-<p align="center">
-  <strong>Keep your Android background services alive, automatically.</strong>
+  <img src="assets/banner.png" alt="Service Keeper - Keep your Android services running" width="100%">
 </p>
 
 <p align="center">
