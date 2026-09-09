@@ -89,28 +89,30 @@ const _subThemes = FlexSubThemesData(
 
 ThemeData _buildLight(ColorScheme? dynamic, Color? seed) {
   final scheme = dynamic ??
-      ColorScheme.fromSeed(seedColor: seed ?? _brandSeed, brightness: Brightness.light);
+      ColorScheme.fromSeed(
+          seedColor: seed ?? _brandSeed, brightness: Brightness.light);
   return FlexColorScheme.light(
     colorScheme: scheme,
     surfaceMode: FlexSurfaceMode.levelSurfacesLowScaffold,
     blendLevel: 5,
     subThemesData: _subThemes,
   ).toTheme.copyWith(
-    textTheme: ThemeData.light().textTheme.apply(fontFamily: 'Inter'),
-  );
+        textTheme: ThemeData.light().textTheme.apply(fontFamily: 'Inter'),
+      );
 }
 
 ThemeData _buildDark(ColorScheme? dynamic, Color? seed) {
   final scheme = dynamic ??
-      ColorScheme.fromSeed(seedColor: seed ?? _brandSeed, brightness: Brightness.dark);
+      ColorScheme.fromSeed(
+          seedColor: seed ?? _brandSeed, brightness: Brightness.dark);
   return FlexColorScheme.dark(
     colorScheme: scheme,
     surfaceMode: FlexSurfaceMode.levelSurfacesLowScaffold,
     blendLevel: 10,
     subThemesData: _subThemes,
   ).toTheme.copyWith(
-    textTheme: ThemeData.dark().textTheme.apply(fontFamily: 'Inter'),
-  );
+        textTheme: ThemeData.dark().textTheme.apply(fontFamily: 'Inter'),
+      );
 }
 
 class ServiceKeeperApp extends StatelessWidget {
@@ -121,7 +123,8 @@ class ServiceKeeperApp extends StatelessWidget {
     return DynamicColorBuilder(
       builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
         return ListenableBuilder(
-          listenable: Listenable.merge([materialYouNotifier, wallpaperSeedNotifier]),
+          listenable:
+              Listenable.merge([materialYouNotifier, wallpaperSeedNotifier]),
           builder: (context, _) {
             final useMY = materialYouNotifier.value;
             final seed = wallpaperSeedNotifier.value;
@@ -129,8 +132,10 @@ class ServiceKeeperApp extends StatelessWidget {
             return MaterialApp(
               title: 'Service Keeper',
               debugShowCheckedModeBanner: false,
-              theme: _buildLight(useMY ? lightDynamic : null, useMY ? seed : null),
-              darkTheme: _buildDark(useMY ? darkDynamic : null, useMY ? seed : null),
+              theme:
+                  _buildLight(useMY ? lightDynamic : null, useMY ? seed : null),
+              darkTheme:
+                  _buildDark(useMY ? darkDynamic : null, useMY ? seed : null),
               home: const SplashScreen(),
             );
           },

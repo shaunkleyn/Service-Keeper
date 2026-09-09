@@ -51,7 +51,8 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
     _appRestartEnabled = widget.appRestartEnabled;
   }
 
-  int get _effectiveMinutes => _customIntervalMinutes ?? widget.globalIntervalMinutes;
+  int get _effectiveMinutes =>
+      _customIntervalMinutes ?? widget.globalIntervalMinutes;
 
   AppSettingsResult _buildResult() => AppSettingsResult(
         customIntervalMinutes: _customIntervalMinutes,
@@ -111,8 +112,8 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
             ),
             const SizedBox(height: 16),
             Text('Restart behavior',
-                style:
-                    theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+                style: theme.textTheme.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
@@ -128,8 +129,8 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
             ),
             const SizedBox(height: 24),
             Text('Check interval',
-                style:
-                    theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+                style: theme.textTheme.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
             Text(
               'Applies to all monitored services in this app.',
@@ -153,15 +154,16 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                     Expanded(
                       child: Text(
                         'Interval checking is disabled globally. Enable it in Settings to use scheduled checks.',
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant),
                       ),
                     ),
                   ],
                 ),
               ),
             RadioListTile<int>(
-              title: Text('Default value (${widget.globalIntervalMinutes} min)'),
+              title:
+                  Text('Default value (${widget.globalIntervalMinutes} min)'),
               subtitle: Text(
                 widget.globalIntervalEnabled
                     ? 'Use the value set in Settings'
@@ -206,8 +208,8 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                       child: Text(
                         'Intervals under 15 minutes use self-scheduling one-time workers. '
                         'Android Doze mode may still delay checks during deep sleep.',
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: theme.colorScheme.onTertiaryContainer),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onTertiaryContainer),
                       ),
                     ),
                   ],

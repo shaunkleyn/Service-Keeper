@@ -49,7 +49,8 @@ class _AboutScreenState extends State<AboutScreen> {
           Center(
             child: Text(
               'Service Keeper',
-              style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+              style: theme.textTheme.headlineSmall
+                  ?.copyWith(fontWeight: FontWeight.w700),
             ),
           ),
           const SizedBox(height: 4),
@@ -58,7 +59,8 @@ class _AboutScreenState extends State<AboutScreen> {
               _info != null
                   ? 'Version ${_info!.version} (build ${_info!.buildNumber})'
                   : '…',
-              style: theme.textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: cs.onSurfaceVariant),
             ),
           ),
           const SizedBox(height: 20),
@@ -67,7 +69,8 @@ class _AboutScreenState extends State<AboutScreen> {
               'Keeps Android background services alive using Shizuku. '
               'Monitor, restart, and get notified when services stop unexpectedly.',
               textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: cs.onSurfaceVariant),
             ),
           ),
           const SizedBox(height: 32),
@@ -88,7 +91,8 @@ class _AboutScreenState extends State<AboutScreen> {
             subtitle: const Text('Open an issue on GitHub'),
             trailing: const Icon(Icons.open_in_new, size: 18),
             onTap: () => launchUrl(
-              Uri.parse('https://github.com/shaunkleyn/Service-Keeper/issues/new'),
+              Uri.parse(
+                  'https://github.com/shaunkleyn/Service-Keeper/issues/new'),
               mode: LaunchMode.externalApplication,
             ),
           ),

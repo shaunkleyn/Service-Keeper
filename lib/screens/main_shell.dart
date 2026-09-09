@@ -113,11 +113,15 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
 
   Future<void> _reloadBannerStates() async {
     final prefs = await SharedPreferences.getInstance();
-    if (mounted) setState(() {
-      _appRestartTipDismissed = prefs.getBool('app_restart_tip_dismissed') ?? false;
-      _monitoringExplainerDismissed = prefs.getBool('monitoring_explainer_dismissed') ?? false;
-      _toggleExplainerDismissed = prefs.getBool('toggle_explainer_dismissed') ?? false;
-    });
+    if (mounted)
+      setState(() {
+        _appRestartTipDismissed =
+            prefs.getBool('app_restart_tip_dismissed') ?? false;
+        _monitoringExplainerDismissed =
+            prefs.getBool('monitoring_explainer_dismissed') ?? false;
+        _toggleExplainerDismissed =
+            prefs.getBool('toggle_explainer_dismissed') ?? false;
+      });
   }
 
   Future<void> _checkShizuku() async {
@@ -132,7 +136,8 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
             ? DateTime.fromMillisecondsSinceEpoch(stored)
             : DateTime.now();
         if (stored == null) {
-          await prefs.setInt('shizuku_ready_since', since.millisecondsSinceEpoch);
+          await prefs.setInt(
+              'shizuku_ready_since', since.millisecondsSinceEpoch);
         }
         setState(() {
           _shizukuStatus = status;
@@ -179,18 +184,21 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     final since = _shizukuReadySince;
     if (since == null) return '';
     final d = DateTime.now().difference(since);
-    if (d.inDays > 0) return '${d.inDays}d ${d.inHours.remainder(24)}h ${d.inMinutes.remainder(60)}m';
+    if (d.inDays > 0)
+      return '${d.inDays}d ${d.inHours.remainder(24)}h ${d.inMinutes.remainder(60)}m';
     if (d.inHours > 0) return '${d.inHours}h ${d.inMinutes.remainder(60)}m';
     if (d.inMinutes > 0) return '${d.inMinutes}m';
     return 'just now';
   }
 
   Widget _buildShizukuBanner() {
-    final color = _shizukuStatus == ShizukuStatus.ready ? Colors.green : Colors.orange;
+    final color =
+        _shizukuStatus == ShizukuStatus.ready ? Colors.green : Colors.orange;
     final isReady = _shizukuStatus == ShizukuStatus.ready;
     final duration = isReady ? _formatActiveDuration() : '';
     final label = switch (_shizukuStatus) {
-      ShizukuStatus.ready => 'Shizuku active${duration.isNotEmpty ? ' · $duration' : ''}',
+      ShizukuStatus.ready =>
+        'Shizuku active${duration.isNotEmpty ? ' · $duration' : ''}',
       ShizukuStatus.permissionDenied => 'Shizuku: permission denied',
       ShizukuStatus.notRunning => 'Shizuku not running',
       ShizukuStatus.notInstalled => 'Shizuku not installed',
@@ -205,7 +213,8 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           Icon(icon, color: color, size: 18),
           const SizedBox(width: 8),
           Text(label,
-              style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 13)),
+              style: TextStyle(
+                  color: color, fontWeight: FontWeight.w600, fontSize: 13)),
           if (!isReady) ...[
             const Spacer(),
             Text('Tap to fix →', style: TextStyle(color: color, fontSize: 12)),
@@ -229,10 +238,13 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
             child: Text(
               'Battery optimization active — checks may be delayed',
               style: TextStyle(
-                  color: Colors.deepOrange, fontWeight: FontWeight.w600, fontSize: 13),
+                  color: Colors.deepOrange,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13),
             ),
           ),
-          Text('Tap to fix →', style: TextStyle(color: Colors.deepOrange, fontSize: 12)),
+          Text('Tap to fix →',
+              style: TextStyle(color: Colors.deepOrange, fontSize: 12)),
         ]),
       ),
     );
@@ -244,14 +256,14 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       pref: 'monitoring_explainer_dismissed',
       dismissed: false,
       text:
-            'Service Keeper runs a persistent background watcher that reads Android\'s activity log in real time. '
+          'Service Keeper runs a persistent background watcher that reads Android\'s activity log in real time. '
           'The moment a monitored service stops Service Keeper detects it and restarts it straight away. '
-            'Interval checking is a safety net: it periodically re-checks all services to catch '
-            'anything the live watcher may have missed (e.g. if Shizuku was briefly offline). '
-            'It\'s optional, but useful as a backup.',
+          'Interval checking is a safety net: it periodically re-checks all services to catch '
+          'anything the live watcher may have missed (e.g. if Shizuku was briefly offline). '
+          'It\'s optional, but useful as a backup.',
       onDismiss: () {
-            if (mounted) setState(() => _monitoringExplainerDismissed = true);
-          },
+        if (mounted) setState(() => _monitoringExplainerDismissed = true);
+      },
       icon: Icons.info,
       color:
           Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.4),
@@ -268,14 +280,13 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     return PageBanner(
       pref: 'app_restart_tip_dismissed',
       dismissed: false,
-      text: 'Tip: If a service can\'t be started directly, enable app restart fallback in App settings to launch the app instead.',
-
+      text:
+          'Tip: If a service can\'t be started directly, enable app restart fallback in App settings to launch the app instead.',
       onDismiss: () {
-            if (mounted) setState(() => _appRestartTipDismissed = true);
-          },
+        if (mounted) setState(() => _appRestartTipDismissed = true);
+      },
       icon: Icons.open_in_browser_outlined,
-      color:
-          cs.tertiaryContainer.withValues(alpha: 0.45),
+      color: cs.tertiaryContainer.withValues(alpha: 0.45),
       textColor: cs.onTertiaryContainer,
       iconColor: cs.onTertiaryContainer,
       pageIndex: 0,
@@ -315,12 +326,10 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                 children: [
                   Text(label,
                       style: tt.labelSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: cs.onSurface)),
+                          fontWeight: FontWeight.w700, color: cs.onSurface)),
                   Text(description,
-                      style: tt.labelSmall?.copyWith(
-                          fontSize: 10,
-                          color: cs.onSurfaceVariant)),
+                      style: tt.labelSmall
+                          ?.copyWith(fontSize: 10, color: cs.onSurfaceVariant)),
                 ],
               ),
             ),
@@ -341,8 +350,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
               const SizedBox(width: 6),
               Text('How the toggle works',
                   style: tt.labelMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: cs.onSurfaceVariant)),
+                      fontWeight: FontWeight.w600, color: cs.onSurfaceVariant)),
               const Spacer(),
               GestureDetector(
                 onTap: () async {
@@ -401,11 +409,14 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           Expanded(
             child: Text(
               "Notification permission required — restart alerts won't appear",
-              style:
-                  TextStyle(color: Colors.amber, fontWeight: FontWeight.w600, fontSize: 13),
+              style: TextStyle(
+                  color: Colors.amber,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13),
             ),
           ),
-          Text('Tap to fix →', style: TextStyle(color: Colors.amber, fontSize: 12)),
+          Text('Tap to fix →',
+              style: TextStyle(color: Colors.amber, fontSize: 12)),
         ]),
       ),
     );
@@ -424,7 +435,8 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           '3. Return to this app',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
           FilledButton(
             onPressed: () async {
               Navigator.pop(ctx);
@@ -444,7 +456,8 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       final a11yKeys = await _storage.loadA11yMonitoredKeys();
       final notifKeys = await _storage.loadNotifMonitoredKeys();
       final a11yNotifOff = await _storage.loadA11yNotifOffKeys();
-      final notifListenerNotifOff = await _storage.loadNotifListenerNotifOffKeys();
+      final notifListenerNotifOff =
+          await _storage.loadNotifListenerNotifOffKeys();
       final events = await _db.getAllEvents();
       final now = DateTime.now();
 
@@ -480,7 +493,8 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Backup failed: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('Backup failed: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -512,8 +526,8 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       final installed = await appInfo.getInstalledServices();
       final installedPackages = installed.map((s) => s.packageName).toSet();
 
-      final missingPackages = BackupService.findMissingPackages(
-          backup.services, installedPackages);
+      final missingPackages =
+          BackupService.findMissingPackages(backup.services, installedPackages);
       final adjustedServices = BackupService.disableMissingServices(
           backup.services, missingPackages);
       final adjustedA11yKeys = BackupService.filterKeysForMissing(
@@ -542,9 +556,11 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel')),
             FilledButton(
-                onPressed: () => Navigator.pop(ctx, true), child: const Text('Restore')),
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Restore')),
           ],
         ),
       );
@@ -555,7 +571,8 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       await _storage.saveA11yMonitoredKeys(adjustedA11yKeys);
       await _storage.saveNotifMonitoredKeys(adjustedNotifKeys);
       await _storage.saveA11yNotifOffKeys(adjustedA11yNotifOff);
-      await _storage.saveNotifListenerNotifOffKeys(adjustedNotifListenerNotifOff);
+      await _storage
+          .saveNotifListenerNotifOffKeys(adjustedNotifListenerNotifOff);
       await _storage.saveRestoredMissingPackages(missingPackages);
       await _db.importAuditEvents(
           backup.auditLog.map((e) => AuditEvent.fromMap(e)).toList());
@@ -588,7 +605,8 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Restore failed: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('Restore failed: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -626,26 +644,26 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                 ),
                 PopupMenuButton<String>(
                   onSelected: (v) {
-switch (v) {
-  case 'enable':
-    _selectionState?.onEnableSelected();
-    break;
-  case 'disable':
-    _selectionState?.onDisableSelected();
-    break;
-  case 'configure':
-    _selectionState?.onConfigureSelected();
-    break;
-  case 'select_all':
-    _selectionState?.onSelectAll();
-    break;
-  case 'invert':
-    _selectionState?.onInvertSelection();
-    break;
-  case 'remove':
-    _selectionState?.onRemoveSelected();
-    break;
-}
+                    switch (v) {
+                      case 'enable':
+                        _selectionState?.onEnableSelected();
+                        break;
+                      case 'disable':
+                        _selectionState?.onDisableSelected();
+                        break;
+                      case 'configure':
+                        _selectionState?.onConfigureSelected();
+                        break;
+                      case 'select_all':
+                        _selectionState?.onSelectAll();
+                        break;
+                      case 'invert':
+                        _selectionState?.onInvertSelection();
+                        break;
+                      case 'remove':
+                        _selectionState?.onRemoveSelected();
+                        break;
+                    }
                   },
                   itemBuilder: (_) => [
                     const PopupMenuItem(
@@ -662,8 +680,8 @@ switch (v) {
                     const PopupMenuDivider(),
                     PopupMenuItem(
                       value: 'remove',
-                      child: Text('Remove',
-                          style: TextStyle(color: Colors.red)),
+                      child:
+                          Text('Remove', style: TextStyle(color: Colors.red)),
                     ),
                   ],
                 ),
@@ -708,7 +726,10 @@ switch (v) {
                     if (v == 'backup') _backup();
                     if (v == 'restore') _restore();
                     if (v == 'about') {
-                      Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutScreen()));
+                      Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const AboutScreen()));
                     }
                   },
                   itemBuilder: (_) => [
@@ -827,7 +848,8 @@ class _KeepAlive extends StatefulWidget {
   State<_KeepAlive> createState() => _KeepAliveState();
 }
 
-class _KeepAliveState extends State<_KeepAlive> with AutomaticKeepAliveClientMixin {
+class _KeepAliveState extends State<_KeepAlive>
+    with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
 

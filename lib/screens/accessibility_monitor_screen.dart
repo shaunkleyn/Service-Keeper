@@ -40,8 +40,14 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
   final _storage = StorageService();
   final _system = SystemService();
 
-  List<({String packageName, String serviceClass, String appName, bool exported, String permission})>
-      _a11yServices = [];
+  List<
+      ({
+        String packageName,
+        String serviceClass,
+        String appName,
+        bool exported,
+        String permission
+      })> _a11yServices = [];
   Set<String> _enabledKeys = {};
   Set<String> _monitoredKeys = {};
   Set<String> _notifOffKeys = {};
@@ -87,7 +93,8 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
 
     final all = await _appInfo.getInstalledServices();
     final a11y = all
-        .where((s) => s.permission == 'android.permission.BIND_ACCESSIBILITY_SERVICE')
+        .where((s) =>
+            s.permission == 'android.permission.BIND_ACCESSIBILITY_SERVICE')
         .toList();
 
     final enabled = await _system.getEnabledAccessibilityServices();
@@ -96,26 +103,30 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
 
     final newKeys = enabled
         .where((k) =>
-            !monKeys.contains(k) && a11y.any((s) => '${s.packageName}/${s.serviceClass}' == k))
+            !monKeys.contains(k) &&
+            a11y.any((s) => '${s.packageName}/${s.serviceClass}' == k))
         .toSet();
     if (newKeys.isNotEmpty) {
       monKeys = {...monKeys, ...newKeys};
       for (final k in newKeys) {
         final slash = k.indexOf('/');
         if (slash >= 0) {
-          await _storage.addA11yMonitored(k.substring(0, slash), k.substring(slash + 1));
+          await _storage.addA11yMonitored(
+              k.substring(0, slash), k.substring(slash + 1));
         }
       }
     }
 
-    final validKeys = a11y.map((s) => '${s.packageName}/${s.serviceClass}').toSet();
+    final validKeys =
+        a11y.map((s) => '${s.packageName}/${s.serviceClass}').toSet();
     final staleKeys = monKeys.where((k) => !validKeys.contains(k)).toSet();
     if (staleKeys.isNotEmpty) {
       monKeys = monKeys.difference(staleKeys);
       for (final k in staleKeys) {
         final slash = k.indexOf('/');
         if (slash >= 0) {
-          await _storage.removeA11yMonitored(k.substring(0, slash), k.substring(slash + 1));
+          await _storage.removeA11yMonitored(
+              k.substring(0, slash), k.substring(slash + 1));
         }
       }
     }
@@ -127,7 +138,8 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
         _monitoredKeys = monKeys;
         _notifOffKeys = notifOff;
         _permInfoDismissed = prefs.getBool('a11y_perm_info_dismissed') ?? false;
-        _revokeBannerDismissed = prefs.getBool('a11y_revoke_banner_dismissed') ?? false;
+        _revokeBannerDismissed =
+            prefs.getBool('a11y_revoke_banner_dismissed') ?? false;
         _loading = false;
         for (final pkg in a11y.map((s) => s.packageName).toSet()) {
           _expandedGroups.putIfAbsent(pkg, () => false);
@@ -144,21 +156,29 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
     if (!mounted) return;
     final newlyEnabled = enabled
         .difference(prev)
-        .where((k) => _a11yServices.any((s) => '${s.packageName}/${s.serviceClass}' == k))
+        .where((k) =>
+            _a11yServices.any((s) => '${s.packageName}/${s.serviceClass}' == k))
         .toSet();
-    final revoked = prev.difference(enabled).where(_monitoredKeys.contains).toSet();
+    final revoked =
+        prev.difference(enabled).where(_monitoredKeys.contains).toSet();
     setState(() {
       _enabledKeys = enabled;
-      if (newlyEnabled.isNotEmpty) _monitoredKeys = {..._monitoredKeys, ...newlyEnabled};
-      if (revoked.isNotEmpty) _monitoredKeys = Set.from(_monitoredKeys)..removeAll(revoked);
+      if (newlyEnabled.isNotEmpty)
+        _monitoredKeys = {..._monitoredKeys, ...newlyEnabled};
+      if (revoked.isNotEmpty)
+        _monitoredKeys = Set.from(_monitoredKeys)..removeAll(revoked);
     });
     for (final k in newlyEnabled) {
       final slash = k.indexOf('/');
-      if (slash >= 0) await _storage.addA11yMonitored(k.substring(0, slash), k.substring(slash + 1));
+      if (slash >= 0)
+        await _storage.addA11yMonitored(
+            k.substring(0, slash), k.substring(slash + 1));
     }
     for (final k in revoked) {
       final slash = k.indexOf('/');
-      if (slash >= 0) await _storage.removeA11yMonitored(k.substring(0, slash), k.substring(slash + 1));
+      if (slash >= 0)
+        await _storage.removeA11yMonitored(
+            k.substring(0, slash), k.substring(slash + 1));
     }
   }
 
@@ -169,7 +189,8 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
       final b64 = prefs.getString('app_icon_v1_$pkg');
       if (b64 != null) cached[pkg] = base64Decode(b64);
     }
-    if (mounted && cached.isNotEmpty) setState(() => _iconCache = {..._iconCache, ...cached});
+    if (mounted && cached.isNotEmpty)
+      setState(() => _iconCache = {..._iconCache, ...cached});
 
     final missing = packages.where((p) => !cached.containsKey(p)).toSet();
     for (final pkg in missing) {
@@ -213,7 +234,8 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
     }
   }
 
-  Future<void> _toggle(String packageName, String serviceClass, String appName) async {
+  Future<void> _toggle(
+      String packageName, String serviceClass, String appName) async {
     final key = '$packageName/$serviceClass';
     final nowMonitored = !_monitoredKeys.contains(key);
     setState(() {
@@ -230,16 +252,16 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
     if (mounted) {
       final label = serviceClass.split('.').last;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(nowMonitored ? 'Now monitoring $label' : 'Stopped monitoring $label'),
+        content: Text(nowMonitored
+            ? 'Now monitoring $label'
+            : 'Stopped monitoring $label'),
         duration: const Duration(seconds: 2),
       ));
     }
   }
 
-  Future<void> _setGroupState(
-      String packageName,
-      List<({String serviceClass, String appName})> services,
-      int state) async {
+  Future<void> _setGroupState(String packageName,
+      List<({String serviceClass, String appName})> services, int state) async {
     final prevMonitored = Set<String>.from(_monitoredKeys);
     final prevNotifOff = Set<String>.from(_notifOffKeys);
 
@@ -260,7 +282,8 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
           .where((s) => _enabledKeys.contains('$packageName/${s.serviceClass}'))
           .toList();
       final alreadyMonitored = services
-          .where((s) => _monitoredKeys.contains('$packageName/${s.serviceClass}'))
+          .where(
+              (s) => _monitoredKeys.contains('$packageName/${s.serviceClass}'))
           .toList();
       if (applicable.isEmpty && alreadyMonitored.isEmpty) {
         await _showPermissionRequiredDialog(
@@ -294,7 +317,11 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
     }
     if (!mounted) return;
     final appName = services.first.appName;
-    final label = state == 0 ? 'Disabled' : state == 1 ? 'Monitor' : 'Notify';
+    final label = state == 0
+        ? 'Disabled'
+        : state == 1
+            ? 'Monitor'
+            : 'Notify';
     final message = '$appName: $label';
 
     Future<void> undoFn() async {
@@ -337,7 +364,8 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
           FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
               child: const Text('Open Settings')),
@@ -388,7 +416,8 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
       }
       final label = serviceClass.split('.').last;
       final title = 'Accessibility service issue: $label ($packageName)';
-      await DiagnosticsService.openGitHubIssue(context, title: title, body: body);
+      await DiagnosticsService.openGitHubIssue(context,
+          title: title, body: body);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -447,7 +476,8 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
         loadingOpen = false;
       }
       final title = 'Accessibility services issue: $appName ($packageName)';
-      await DiagnosticsService.openGitHubIssue(context, title: title, body: body);
+      await DiagnosticsService.openGitHubIssue(context,
+          title: title, body: body);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -496,7 +526,10 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
             if (mounted) setState(() => _permInfoDismissed = true);
           },
           icon: Icons.lock_open,
-          color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.4),
+          color: Theme.of(context)
+              .colorScheme
+              .primaryContainer
+              .withValues(alpha: 0.4),
           textColor: Theme.of(context).colorScheme.onSecondaryContainer,
           pageIndex: 1,
           pageController: widget.pageController,
@@ -504,13 +537,17 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
         PageBanner(
           pref: 'a11y_revoke_banner_dismissed',
           dismissed: _revokeBannerDismissed,
-          text: 'Disabling monitoring here does not revoke the app\'s Android accessibility permission. '
+          text:
+              'Disabling monitoring here does not revoke the app\'s Android accessibility permission. '
               'To revoke, go to Android Settings.',
           onDismiss: () async {
             if (mounted) setState(() => _revokeBannerDismissed = true);
           },
           icon: Icons.lock_open,
-          color: Theme.of(context).colorScheme.secondaryContainer.withValues(alpha: 0.4),
+          color: Theme.of(context)
+              .colorScheme
+              .secondaryContainer
+              .withValues(alpha: 0.4),
           textColor: Theme.of(context).colorScheme.onSecondaryContainer,
           pageIndex: 1,
           pageController: widget.pageController,
@@ -523,7 +560,8 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
         SliverToBoxAdapter(child: bannersContent),
         if (pkgs.isEmpty)
           const SliverFillRemaining(
-            child: Center(child: Text('No third-party accessibility services found.')),
+            child: Center(
+                child: Text('No third-party accessibility services found.')),
           )
         else
           ...pkgs.map((pkg) {
@@ -538,12 +576,18 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
                     _monitoredKeys.contains('$pkg/${s.serviceClass}') &&
                     _enabledKeys.contains('$pkg/${s.serviceClass}'))
                 .length;
-            final hasIssue = monitoredCount > 0 && activeMonitored < monitoredCount;
-            final monitoredSvcs =
-                services.where((s) => _monitoredKeys.contains('$pkg/${s.serviceClass}'));
+            final hasIssue =
+                monitoredCount > 0 && activeMonitored < monitoredCount;
+            final monitoredSvcs = services.where(
+                (s) => _monitoredKeys.contains('$pkg/${s.serviceClass}'));
             final allMonitoredNotifOff = monitoredSvcs.isNotEmpty &&
-                monitoredSvcs.every((s) => _notifOffKeys.contains('$pkg/${s.serviceClass}'));
-            final groupState = monitoredCount == 0 ? 0 : allMonitoredNotifOff ? 1 : 2;
+                monitoredSvcs.every(
+                    (s) => _notifOffKeys.contains('$pkg/${s.serviceClass}'));
+            final groupState = monitoredCount == 0
+                ? 0
+                : allMonitoredNotifOff
+                    ? 1
+                    : 2;
 
             final subtitle = monitoredCount == 0
                 ? '${services.length} service${services.length == 1 ? '' : 's'}'
@@ -552,8 +596,8 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
             return AppGroupCard(
               key: ValueKey(pkg),
               expanded: _expandedGroups[pkg] ?? false,
-              onToggleExpanded: () => setState(
-                  () => _expandedGroups[pkg] = !(_expandedGroups[pkg] ?? false)),
+              onToggleExpanded: () => setState(() =>
+                  _expandedGroups[pkg] = !(_expandedGroups[pkg] ?? false)),
               packageName: pkg,
               appName: services.first.appName,
               iconBytes: _iconCache[pkg],
@@ -561,7 +605,8 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
               subtitle: subtitle,
               groupState: groupState,
               hasIssue: hasIssue,
-              onGroupStateChanged: (state) => _setGroupState(pkg, services, state),
+              onGroupStateChanged: (state) =>
+                  _setGroupState(pkg, services, state),
               menuItems: const [
                 PopupMenuItem(
                   value: 'history',
@@ -607,7 +652,8 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
                 }
               },
               children: [
-                for (final svc in services) _buildServiceTile(context, pkg, svc, appColor),
+                for (final svc in services)
+                  _buildServiceTile(context, pkg, svc, appColor),
               ],
             );
           }),
@@ -638,7 +684,8 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
         children: [
           Text(
             svc.serviceClass,
-            style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
+            style: TextStyle(
+                fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
           ),
           const SizedBox(height: 3),
           _StatusChip(enabled: enabled),
@@ -648,7 +695,9 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            _notifOffKeys.contains(key) ? Icons.notifications_off : Icons.notifications,
+            _notifOffKeys.contains(key)
+                ? Icons.notifications_off
+                : Icons.notifications,
             size: 16,
             color: _notifOffKeys.contains(key)
                 ? theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4)
@@ -663,13 +712,14 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
                 value: monitored,
                 thumbColor: WidgetStateProperty.resolveWith(
                     (s) => s.contains(WidgetState.selected) ? appColor : null),
-                trackColor: WidgetStateProperty.resolveWith(
-                    (s) => s.contains(WidgetState.selected)
+                trackColor: WidgetStateProperty.resolveWith((s) =>
+                    s.contains(WidgetState.selected)
                         ? appColor?.withValues(alpha: 0.5)
                         : null),
                 onChanged: (_) {
                   if (!enabled) {
-                    _showPermissionRequiredDialog(pkg, svc.serviceClass, svc.appName);
+                    _showPermissionRequiredDialog(
+                        pkg, svc.serviceClass, svc.appName);
                   } else {
                     _toggle(pkg, svc.serviceClass, svc.appName);
                   }
@@ -678,7 +728,8 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
             ),
           ),
           PopupMenuButton<String>(
-            icon: Icon(Icons.more_vert, size: 18, color: theme.colorScheme.onSurfaceVariant),
+            icon: Icon(Icons.more_vert,
+                size: 18, color: theme.colorScheme.onSurfaceVariant),
             padding: EdgeInsets.zero,
             onSelected: (v) {
               if (v == 'history') {
@@ -733,7 +784,6 @@ class _AccessibilityMonitorScreenState extends State<AccessibilityMonitorScreen>
   }
 }
 
-
 class _StatusChip extends StatelessWidget {
   final bool enabled;
 
@@ -746,7 +796,8 @@ class _StatusChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: (enabled ? activeColor : cs.surfaceContainerHighest).withValues(alpha: 0.2),
+        color: (enabled ? activeColor : cs.surfaceContainerHighest)
+            .withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [

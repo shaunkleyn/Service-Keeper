@@ -29,8 +29,8 @@ class _ProgressContentState extends State<_ProgressContent>
   @override
   void initState() {
     super.initState();
-    _controller =
-        AnimationController(vsync: this, duration: widget.duration)..forward();
+    _controller = AnimationController(vsync: this, duration: widget.duration)
+      ..forward();
     _progress = Tween<double>(begin: 1.0, end: 0.0)
         .animate(CurvedAnimation(parent: _controller, curve: Curves.linear));
   }

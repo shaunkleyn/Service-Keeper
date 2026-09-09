@@ -45,14 +45,17 @@ class ServiceManager {
       }
     } catch (_) {}
 
-    return installed.map((e) => RunningService(
-      packageName: e.packageName,
-      serviceClass: e.serviceClass,
-      appName: e.appName,
-      isRunning: runningKeys.contains('${e.packageName}/${e.serviceClass}'),
-      isExported: e.exported,
-      permission: e.permission,
-    )).toList();
+    return installed
+        .map((e) => RunningService(
+              packageName: e.packageName,
+              serviceClass: e.serviceClass,
+              appName: e.appName,
+              isRunning:
+                  runningKeys.contains('${e.packageName}/${e.serviceClass}'),
+              isExported: e.exported,
+              permission: e.permission,
+            ))
+        .toList();
   }
 
   Future<List<RunningService>> listRunningServices() async {
@@ -70,7 +73,9 @@ class ServiceManager {
     );
     if (output == null) return null;
     return _parseDumpsys(output).any(
-      (s) => s.packageName == service.packageName && s.serviceClass == service.serviceClass,
+      (s) =>
+          s.packageName == service.packageName &&
+          s.serviceClass == service.serviceClass,
     );
   }
 
@@ -102,13 +107,15 @@ class ServiceManager {
       }
 
       // Broadcast fallback: for apps that expose exported receivers that start services.
-      final (broadcastOk, broadcastReason) = await _tryBroadcastStartFallback(service);
+      final (broadcastOk, broadcastReason) =
+          await _tryBroadcastStartFallback(service);
       if (broadcastOk) return (true, broadcastReason);
 
       final reason = fallback == null
           ? (result != null ? _amError(result) : 'Shizuku returned null')
           : _amError(fallback);
-      if (broadcastReason == null || broadcastReason.isEmpty) return (false, reason);
+      if (broadcastReason == null || broadcastReason.isEmpty)
+        return (false, reason);
       return (false, '$reason; broadcast fallback failed: $broadcastReason');
     }
     return (true, null);
@@ -153,18 +160,24 @@ class ServiceManager {
     if (previousForeground != null && previousForeground != component) {
       final restore = await _shizuku.exec('am start -n $previousForeground');
       if (restore == null || restore.toLowerCase().contains('error')) {
-        await _shizuku.exec('input keyevent 3'); // fall back to HOME if restore failed
+        await _shizuku
+            .exec('input keyevent 3'); // fall back to HOME if restore failed
       }
     } else {
-      await _shizuku.exec('input keyevent 3'); // no prior app known, or it was already the target
+      await _shizuku.exec(
+          'input keyevent 3'); // no prior app known, or it was already the target
     }
     return true;
   }
 
-  Future<(bool, String?)> _tryBroadcastStartFallback(MonitoredService service) async {
+  Future<(bool, String?)> _tryBroadcastStartFallback(
+      MonitoredService service) async {
     final actions = await _getBroadcastStartActions(service.packageName);
     if (actions.isEmpty) {
-      return (false, 'no matching exported start/toggle broadcast actions found');
+      return (
+        false,
+        'no matching exported start/toggle broadcast actions found'
+      );
     }
 
     final tried = <String>[];
@@ -198,7 +211,9 @@ class ServiceManager {
         if (action == null) continue;
         final upper = action.toUpperCase();
         if (!upper.startsWith('${packageName.toUpperCase()}.')) continue;
-        if (upper.contains('START') || upper.contains('TOGGLE') || upper.contains('RESTART')) {
+        if (upper.contains('START') ||
+            upper.contains('TOGGLE') ||
+            upper.contains('RESTART')) {
           actions.add(action);
         }
       }
@@ -226,7 +241,8 @@ class ServiceManager {
 
   static String _amError(String output) {
     for (final line in output.split('\n')) {
-      if (line.startsWith('Error:')) return line.replaceFirst('Error: ', '').trim();
+      if (line.startsWith('Error:'))
+        return line.replaceFirst('Error: ', '').trim();
     }
     return output.trim();
   }
