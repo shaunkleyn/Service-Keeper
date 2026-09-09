@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../app_settings_notifier.dart';
-import '../services/app_info_service.dart';
 import '../services/storage_service.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -15,7 +14,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _storage = StorageService();
 
   bool _useAppColors = false;
-  bool _useMaterialYou = false;
   bool _globalIntervalEnabled = true;
   int _defaultInterval = 15;
   String _relaunchIdleMode = 'inactivity';
@@ -48,11 +46,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     final relaunchIdleMode = await _storage.getRelaunchIdleMode();
-    final relaunchInactivitySeconds = await _storage.getRelaunchInactivitySeconds();
+    final relaunchInactivitySeconds =
+        await _storage.getRelaunchInactivitySeconds();
     if (!mounted) return;
     setState(() {
       _useAppColors = prefs.getBool('use_app_colors') ?? false;
-      _useMaterialYou = prefs.getBool('use_material_you') ?? false;
       _globalIntervalEnabled = prefs.getBool('global_interval_enabled') ?? true;
       _defaultInterval = prefs.getInt('default_check_interval') ?? 15;
       _relaunchIdleMode = relaunchIdleMode;
@@ -65,18 +63,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await prefs.setBool('use_app_colors', value);
     colorfulCardsNotifier.value = value;
     setState(() => _useAppColors = value);
-  }
-
-  Future<void> _setMaterialYou(bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('use_material_you', value);
-    if (value) {
-      wallpaperSeedNotifier.value = await AppInfoService.getWallpaperSeedColor();
-    } else {
-      wallpaperSeedNotifier.value = null;
-    }
-    materialYouNotifier.value = value;
-    setState(() => _useMaterialYou = value);
   }
 
   Future<void> _setGlobalIntervalEnabled(bool value) async {
@@ -96,9 +82,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, true), child: const Text('Reset')),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Reset')),
         ],
       ),
     );
@@ -272,7 +260,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: Row(
                     children: [
                       Icon(Icons.info_outline,
-                          color: theme.colorScheme.onTertiaryContainer, size: 18),
+                          color: theme.colorScheme.onTertiaryContainer,
+                          size: 18),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
@@ -345,21 +334,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           RadioListTile<String>(
             title: const Text('Always'),
-            subtitle: const Text('Relaunch immediately, even while you\'re using the phone.'),
+            subtitle: const Text(
+                'Relaunch immediately, even while you\'re using the phone.'),
             value: 'always',
             groupValue: _relaunchIdleMode,
             onChanged: (v) => _setRelaunchIdleMode(v!),
           ),
           RadioListTile<String>(
             title: const Text('No app open'),
-            subtitle: const Text('Only when the home screen is showing, no app in front.'),
+            subtitle: const Text(
+                'Only when the home screen is showing, no app in front.'),
             value: 'no_foreground_app',
             groupValue: _relaunchIdleMode,
             onChanged: (v) => _setRelaunchIdleMode(v!),
           ),
           RadioListTile<String>(
             title: const Text('No activity for a while'),
-            subtitle: const Text('Only after you\'ve stopped tapping or scrolling.'),
+            subtitle:
+                const Text('Only after you\'ve stopped tapping or scrolling.'),
             value: 'inactivity',
             groupValue: _relaunchIdleMode,
             onChanged: (v) => _setRelaunchIdleMode(v!),
@@ -373,7 +365,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     .map((p) => ChoiceChip(
                           label: Text(p.label),
                           selected: _relaunchInactivitySeconds == p.seconds,
-                          onSelected: (_) => _setRelaunchInactivitySeconds(p.seconds),
+                          onSelected: (_) =>
+                              _setRelaunchInactivitySeconds(p.seconds),
                         ))
                     .toList(),
               ),

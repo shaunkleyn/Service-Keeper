@@ -63,7 +63,8 @@ class DiagnosticsService {
         '| App Restart Enabled | ${service.appRestartEnabled ? 'Yes' : 'No'} |');
     buf.writeln('| Monitoring Enabled | ${service.enabled ? 'Yes' : 'No'} |');
     if (service.lastChecked != null) {
-      buf.writeln('| Last Checked | ${service.lastChecked!.toIso8601String()} |');
+      buf.writeln(
+          '| Last Checked | ${service.lastChecked!.toIso8601String()} |');
     }
     if (service.lastRestarted != null) {
       buf.writeln(
@@ -101,14 +102,11 @@ class DiagnosticsService {
 
     buf.writeln('### Monitored Services');
     for (final s in services) {
-      final dot = s.wasRunning == null
-          ? '⚪'
-          : (s.wasRunning! ? '🟢' : '🔴');
+      final dot = s.wasRunning == null ? '⚪' : (s.wasRunning! ? '🟢' : '🔴');
       buf.writeln('- $dot **${s.displayLabel}**');
       buf.writeln('  `${s.serviceClass}`');
       if (s.lastRestarted != null) {
-        buf.writeln(
-            '  Last restarted: ${s.lastRestarted!.toIso8601String()}');
+        buf.writeln('  Last restarted: ${s.lastRestarted!.toIso8601String()}');
       }
     }
     buf.writeln();
@@ -148,8 +146,10 @@ class DiagnosticsService {
     buf.writeln('| Service | $label |');
     buf.writeln('| Class | `$serviceClass` |');
     buf.writeln('| Monitoring Enabled | ${isMonitored ? 'Yes' : 'No'} |');
-    buf.writeln('| Service State | ${isEnabled ? 'Enabled/Active' : 'Disabled/Inactive'} |');
-    buf.writeln('| Notifications Enabled | ${notificationsEnabled ? 'Yes' : 'No'} |');
+    buf.writeln(
+        '| Service State | ${isEnabled ? 'Enabled/Active' : 'Disabled/Inactive'} |');
+    buf.writeln(
+        '| Notifications Enabled | ${notificationsEnabled ? 'Yes' : 'No'} |');
     buf.writeln();
 
     await _appendDeviceInfo(buf);
@@ -190,9 +190,11 @@ class DiagnosticsService {
       buf.writeln('- **${s.displayLabel}** (`${s.serviceClass}`)');
       buf.writeln('  - Monitored: ${s.isMonitored ? 'Yes' : 'No'}');
       buf.writeln('  - State: $state');
-      buf.writeln('  - Notifications: ${s.notificationsEnabled ? 'Enabled' : 'Disabled'}');
+      buf.writeln(
+          '  - Notifications: ${s.notificationsEnabled ? 'Enabled' : 'Disabled'}');
       if (s.lastRestarted != null) {
-        buf.writeln('  - Last restarted: ${s.lastRestarted!.toIso8601String()}');
+        buf.writeln(
+            '  - Last restarted: ${s.lastRestarted!.toIso8601String()}');
       }
     }
     buf.writeln();
@@ -244,7 +246,8 @@ class DiagnosticsService {
       final ts = e.timestamp.toIso8601String().substring(0, 19);
       final notes = (e.notes ?? '').replaceAll('|', '\\|');
       if (includeServiceCol) {
-        buf.writeln('| $ts | ${e.displayLabel} | ${e.eventType.label} | $notes |');
+        buf.writeln(
+            '| $ts | ${e.displayLabel} | ${e.eventType.label} | $notes |');
       } else {
         buf.writeln('| $ts | ${e.eventType.label} | $notes |');
       }
@@ -319,7 +322,8 @@ class DiagnosticsService {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Could not open browser. Diagnostics were copied to clipboard.'),
+            content: Text(
+                'Could not open browser. Diagnostics were copied to clipboard.'),
           ),
         );
       }
@@ -341,7 +345,8 @@ class DiagnosticsService {
       final message = tooLarge
           ? 'Opened GitHub issue. Full diagnostics were copied to clipboard.'
           : 'Opened GitHub issue with diagnostics pre-filled.';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
     }
   }
 

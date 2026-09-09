@@ -55,8 +55,8 @@ class DatabaseService {
         ''');
         await db.execute(
             'CREATE INDEX idx_audit_pkg ON audit_log (package_name, service_class)');
-        await db.execute(
-            'CREATE INDEX idx_audit_ts ON audit_log (timestamp DESC)');
+        await db
+            .execute('CREATE INDEX idx_audit_ts ON audit_log (timestamp DESC)');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -217,8 +217,7 @@ class DatabaseService {
         lastChecked: m['last_checked'] != null
             ? DateTime.parse(m['last_checked'] as String)
             : null,
-        wasRunning: m['was_running'] == null
-            ? null
-            : (m['was_running'] as int) == 1,
+        wasRunning:
+            m['was_running'] == null ? null : (m['was_running'] as int) == 1,
       );
 }

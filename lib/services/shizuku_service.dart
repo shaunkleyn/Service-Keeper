@@ -9,7 +9,8 @@ enum ShizukuStatus {
 }
 
 class ShizukuService {
-  static const _channel = MethodChannel('com.shaunkleyn.service_keeper/shizuku');
+  static const _channel =
+      MethodChannel('com.shaunkleyn.service_keeper/shizuku');
   final _api = ShizukuApi();
 
   Future<ShizukuStatus> checkStatus() async {

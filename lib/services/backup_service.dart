@@ -15,29 +15,31 @@ class AppBackupSettings {
   });
 
   Map<String, dynamic> toJson() => {
-    'use_app_colors': useAppColors,
-    'global_interval_enabled': globalIntervalEnabled,
-    'default_check_interval': defaultCheckInterval,
-    'use_material_you': useMaterialYou,
-  };
+        'use_app_colors': useAppColors,
+        'global_interval_enabled': globalIntervalEnabled,
+        'default_check_interval': defaultCheckInterval,
+        'use_material_you': useMaterialYou,
+      };
 
-  factory AppBackupSettings.fromJson(Map<String, dynamic> json) => AppBackupSettings(
-    useAppColors: json['use_app_colors'] as bool? ?? false,
-    globalIntervalEnabled: json['global_interval_enabled'] as bool? ?? true,
-    defaultCheckInterval: json['default_check_interval'] as int? ?? 15,
-    useMaterialYou: json['use_material_you'] as bool? ?? false,
-  );
+  factory AppBackupSettings.fromJson(Map<String, dynamic> json) =>
+      AppBackupSettings(
+        useAppColors: json['use_app_colors'] as bool? ?? false,
+        globalIntervalEnabled: json['global_interval_enabled'] as bool? ?? true,
+        defaultCheckInterval: json['default_check_interval'] as int? ?? 15,
+        useMaterialYou: json['use_material_you'] as bool? ?? false,
+      );
 
   @override
   bool operator ==(Object other) =>
-    other is AppBackupSettings &&
-    useAppColors == other.useAppColors &&
-    globalIntervalEnabled == other.globalIntervalEnabled &&
-    defaultCheckInterval == other.defaultCheckInterval &&
-    useMaterialYou == other.useMaterialYou;
+      other is AppBackupSettings &&
+      useAppColors == other.useAppColors &&
+      globalIntervalEnabled == other.globalIntervalEnabled &&
+      defaultCheckInterval == other.defaultCheckInterval &&
+      useMaterialYou == other.useMaterialYou;
 
   @override
-  int get hashCode => Object.hash(useAppColors, globalIntervalEnabled, defaultCheckInterval, useMaterialYou);
+  int get hashCode => Object.hash(useAppColors, globalIntervalEnabled,
+      defaultCheckInterval, useMaterialYou);
 }
 
 class BackupData {
@@ -69,7 +71,7 @@ class BackupService {
 
   static String encode(BackupData data) {
     return jsonEncode({
-'version': data.version,
+      'version': data.version,
       'exportedAt': data.exportedAt.toIso8601String(),
       'services': data.services.map((s) => s.toJson()).toList(),
       'a11yMonitoredKeys': data.a11yMonitoredKeys.toList(),
@@ -103,13 +105,13 @@ class BackupService {
         : <String>{};
 
     final settings = version >= 3
-        ? AppBackupSettings.fromJson(json['appSettings'] as Map<String, dynamic>? ?? {})
+        ? AppBackupSettings.fromJson(
+            json['appSettings'] as Map<String, dynamic>? ?? {})
         : const AppBackupSettings();
 
     final rawLog = json['auditLog'] as List? ?? [];
-    final auditLog = rawLog
-        .map((e) => Map<String, dynamic>.from(e as Map))
-        .toList();
+    final auditLog =
+        rawLog.map((e) => Map<String, dynamic>.from(e as Map)).toList();
 
     final exportedAt = json['exportedAt'] != null
         ? DateTime.parse(json['exportedAt'] as String)

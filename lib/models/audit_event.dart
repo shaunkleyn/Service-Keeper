@@ -64,8 +64,7 @@ enum AuditTrigger {
   manual;
 
   String get value => this == automatic ? 'AUTOMATIC' : 'MANUAL';
-  static AuditTrigger fromValue(String v) =>
-      v == 'MANUAL' ? manual : automatic;
+  static AuditTrigger fromValue(String v) => v == 'MANUAL' ? manual : automatic;
 }
 
 class AuditEvent {

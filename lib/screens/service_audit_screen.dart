@@ -98,7 +98,8 @@ class _ServiceAuditScreenState extends State<ServiceAuditScreen> {
                             _filterChip(AuditFilter.all, 'All'),
                             _filterChip(AuditFilter.restarts, 'Restarts'),
                             _filterChip(AuditFilter.settings, 'Settings'),
-                            _filterChip(AuditFilter.notifications, 'Notifications'),
+                            _filterChip(
+                                AuditFilter.notifications, 'Notifications'),
                             _filterChip(AuditFilter.lifecycle, 'Lifecycle'),
                           ],
                         ),
@@ -106,11 +107,14 @@ class _ServiceAuditScreenState extends State<ServiceAuditScreen> {
                     ),
                     Expanded(
                       child: filtered.isEmpty
-                          ? const Center(child: Text('No events match this filter.'))
+                          ? const Center(
+                              child: Text('No events match this filter.'))
                           : ListView.separated(
                               itemCount: filtered.length,
-                              separatorBuilder: (_, __) => const Divider(height: 1),
-                              itemBuilder: (ctx, i) => _buildEventTile(filtered[i]),
+                              separatorBuilder: (_, __) =>
+                                  const Divider(height: 1),
+                              itemBuilder: (ctx, i) =>
+                                  _buildEventTile(filtered[i]),
                             ),
                     ),
                   ],
@@ -130,22 +134,19 @@ class _ServiceAuditScreenState extends State<ServiceAuditScreen> {
     if (_filter == AuditFilter.all) return true;
     return switch (_filter) {
       AuditFilter.all => true,
-      AuditFilter.restarts =>
-        e.eventType == AuditEventType.detectedStopped ||
-        e.eventType == AuditEventType.restartAttempted ||
-        e.eventType == AuditEventType.restartSuccess ||
-        e.eventType == AuditEventType.restartFailed,
-      AuditFilter.settings =>
-        e.eventType == AuditEventType.intervalChanged ||
-        e.eventType == AuditEventType.configChanged,
+      AuditFilter.restarts => e.eventType == AuditEventType.detectedStopped ||
+          e.eventType == AuditEventType.restartAttempted ||
+          e.eventType == AuditEventType.restartSuccess ||
+          e.eventType == AuditEventType.restartFailed,
+      AuditFilter.settings => e.eventType == AuditEventType.intervalChanged ||
+          e.eventType == AuditEventType.configChanged,
       AuditFilter.notifications =>
         e.eventType == AuditEventType.notificationsEnabled ||
-        e.eventType == AuditEventType.notificationsDisabled,
-      AuditFilter.lifecycle =>
-        e.eventType == AuditEventType.added ||
-        e.eventType == AuditEventType.removed ||
-        e.eventType == AuditEventType.enabled ||
-        e.eventType == AuditEventType.disabled,
+            e.eventType == AuditEventType.notificationsDisabled,
+      AuditFilter.lifecycle => e.eventType == AuditEventType.added ||
+          e.eventType == AuditEventType.removed ||
+          e.eventType == AuditEventType.enabled ||
+          e.eventType == AuditEventType.disabled,
     };
   }
 
@@ -162,8 +163,9 @@ class _ServiceAuditScreenState extends State<ServiceAuditScreen> {
 
   Widget _buildEventTile(AuditEvent e) {
     final (icon, color) = _iconAndColor(e.eventType);
-    final usedBroadcastFallback = e.eventType == AuditEventType.restartSuccess &&
-        (e.notes ?? '').toLowerCase().contains('broadcast fallback');
+    final usedBroadcastFallback =
+        e.eventType == AuditEventType.restartSuccess &&
+            (e.notes ?? '').toLowerCase().contains('broadcast fallback');
     return ListTile(
       dense: true,
       leading: CircleAvatar(
@@ -251,17 +253,32 @@ class _ServiceAuditScreenState extends State<ServiceAuditScreen> {
   }
 
   (IconData, Color) _iconAndColor(AuditEventType t) => switch (t) {
-        AuditEventType.detectedStopped => (Icons.stop_circle_outlined, Colors.orange),
+        AuditEventType.detectedStopped => (
+            Icons.stop_circle_outlined,
+            Colors.orange
+          ),
         AuditEventType.restartAttempted => (Icons.refresh, Colors.blue),
-        AuditEventType.restartSuccess => (Icons.check_circle_outline, Colors.green),
+        AuditEventType.restartSuccess => (
+            Icons.check_circle_outline,
+            Colors.green
+          ),
         AuditEventType.restartFailed => (Icons.error_outline, Colors.red),
         AuditEventType.added => (Icons.add_circle_outline, Colors.teal),
         AuditEventType.removed => (Icons.remove_circle_outline, Colors.red),
         AuditEventType.enabled => (Icons.toggle_on_outlined, Colors.green),
         AuditEventType.disabled => (Icons.toggle_off_outlined, Colors.grey),
-        AuditEventType.notificationsEnabled => (Icons.notifications_active_outlined, Colors.green),
-        AuditEventType.notificationsDisabled => (Icons.notifications_off_outlined, Colors.grey),
-        AuditEventType.intervalChanged => (Icons.schedule_outlined, Colors.blue),
+        AuditEventType.notificationsEnabled => (
+            Icons.notifications_active_outlined,
+            Colors.green
+          ),
+        AuditEventType.notificationsDisabled => (
+            Icons.notifications_off_outlined,
+            Colors.grey
+          ),
+        AuditEventType.intervalChanged => (
+            Icons.schedule_outlined,
+            Colors.blue
+          ),
         AuditEventType.configChanged => (Icons.tune_outlined, Colors.purple),
       };
 

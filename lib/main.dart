@@ -1,7 +1,6 @@
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 import 'app_settings_notifier.dart';
@@ -90,28 +89,30 @@ const _subThemes = FlexSubThemesData(
 
 ThemeData _buildLight(ColorScheme? dynamic, Color? seed) {
   final scheme = dynamic ??
-      ColorScheme.fromSeed(seedColor: seed ?? _brandSeed, brightness: Brightness.light);
+      ColorScheme.fromSeed(
+          seedColor: seed ?? _brandSeed, brightness: Brightness.light);
   return FlexColorScheme.light(
     colorScheme: scheme,
     surfaceMode: FlexSurfaceMode.levelSurfacesLowScaffold,
     blendLevel: 5,
     subThemesData: _subThemes,
   ).toTheme.copyWith(
-    textTheme: GoogleFonts.interTextTheme(ThemeData.light().textTheme),
-  );
+        textTheme: ThemeData.light().textTheme.apply(fontFamily: 'Inter'),
+      );
 }
 
 ThemeData _buildDark(ColorScheme? dynamic, Color? seed) {
   final scheme = dynamic ??
-      ColorScheme.fromSeed(seedColor: seed ?? _brandSeed, brightness: Brightness.dark);
+      ColorScheme.fromSeed(
+          seedColor: seed ?? _brandSeed, brightness: Brightness.dark);
   return FlexColorScheme.dark(
     colorScheme: scheme,
     surfaceMode: FlexSurfaceMode.levelSurfacesLowScaffold,
     blendLevel: 10,
     subThemesData: _subThemes,
   ).toTheme.copyWith(
-    textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
-  );
+        textTheme: ThemeData.dark().textTheme.apply(fontFamily: 'Inter'),
+      );
 }
 
 class ServiceKeeperApp extends StatelessWidget {
@@ -122,7 +123,8 @@ class ServiceKeeperApp extends StatelessWidget {
     return DynamicColorBuilder(
       builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
         return ListenableBuilder(
-          listenable: Listenable.merge([materialYouNotifier, wallpaperSeedNotifier]),
+          listenable:
+              Listenable.merge([materialYouNotifier, wallpaperSeedNotifier]),
           builder: (context, _) {
             final useMY = materialYouNotifier.value;
             final seed = wallpaperSeedNotifier.value;
@@ -130,8 +132,10 @@ class ServiceKeeperApp extends StatelessWidget {
             return MaterialApp(
               title: 'Service Keeper',
               debugShowCheckedModeBanner: false,
-              theme: _buildLight(useMY ? lightDynamic : null, useMY ? seed : null),
-              darkTheme: _buildDark(useMY ? darkDynamic : null, useMY ? seed : null),
+              theme:
+                  _buildLight(useMY ? lightDynamic : null, useMY ? seed : null),
+              darkTheme:
+                  _buildDark(useMY ? darkDynamic : null, useMY ? seed : null),
               home: const SplashScreen(),
             );
           },

@@ -25,7 +25,8 @@ class NotificationMonitorScreen extends StatefulWidget {
   });
 
   @override
-  State<NotificationMonitorScreen> createState() => _NotificationMonitorScreenState();
+  State<NotificationMonitorScreen> createState() =>
+      _NotificationMonitorScreenState();
 }
 
 class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
@@ -36,8 +37,14 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
   final _storage = StorageService();
   final _system = SystemService();
 
-  List<({String packageName, String serviceClass, String appName, bool exported, String permission})>
-      _notifServices = [];
+  List<
+      ({
+        String packageName,
+        String serviceClass,
+        String appName,
+        bool exported,
+        String permission
+      })> _notifServices = [];
   Set<String> _enabledKeys = {};
   Set<String> _monitoredKeys = {};
   Set<String> _notifOffKeys = {};
@@ -84,7 +91,8 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
     final all = await _appInfo.getInstalledServices();
     final notif = all
         .where((s) =>
-            s.permission == 'android.permission.BIND_NOTIFICATION_LISTENER_SERVICE')
+            s.permission ==
+            'android.permission.BIND_NOTIFICATION_LISTENER_SERVICE')
         .toList();
 
     final enabled = await _system.getEnabledNotificationListeners();
@@ -101,19 +109,22 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
       for (final k in newKeys) {
         final slash = k.indexOf('/');
         if (slash >= 0) {
-          await _storage.addNotifMonitored(k.substring(0, slash), k.substring(slash + 1));
+          await _storage.addNotifMonitored(
+              k.substring(0, slash), k.substring(slash + 1));
         }
       }
     }
 
-    final validKeys = notif.map((s) => '${s.packageName}/${s.serviceClass}').toSet();
+    final validKeys =
+        notif.map((s) => '${s.packageName}/${s.serviceClass}').toSet();
     final staleKeys = monKeys.where((k) => !validKeys.contains(k)).toSet();
     if (staleKeys.isNotEmpty) {
       monKeys = monKeys.difference(staleKeys);
       for (final k in staleKeys) {
         final slash = k.indexOf('/');
         if (slash >= 0) {
-          await _storage.removeNotifMonitored(k.substring(0, slash), k.substring(slash + 1));
+          await _storage.removeNotifMonitored(
+              k.substring(0, slash), k.substring(slash + 1));
         }
       }
     }
@@ -124,8 +135,10 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
         _enabledKeys = enabled;
         _monitoredKeys = monKeys;
         _notifOffKeys = notifOff;
-        _permInfoDismissed = prefs.getBool('notif_perm_info_dismissed') ?? false;
-        _revokeBannerDismissed = prefs.getBool('notif_revoke_banner_dismissed') ?? false;
+        _permInfoDismissed =
+            prefs.getBool('notif_perm_info_dismissed') ?? false;
+        _revokeBannerDismissed =
+            prefs.getBool('notif_revoke_banner_dismissed') ?? false;
         _loading = false;
         for (final s in notif) {
           _expandedGroups.putIfAbsent(s.packageName, () => false);
@@ -142,21 +155,29 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
     if (!mounted) return;
     final newlyEnabled = enabled
         .difference(prev)
-        .where((k) => _notifServices.any((s) => '${s.packageName}/${s.serviceClass}' == k))
+        .where((k) => _notifServices
+            .any((s) => '${s.packageName}/${s.serviceClass}' == k))
         .toSet();
-    final revoked = prev.difference(enabled).where(_monitoredKeys.contains).toSet();
+    final revoked =
+        prev.difference(enabled).where(_monitoredKeys.contains).toSet();
     setState(() {
       _enabledKeys = enabled;
-      if (newlyEnabled.isNotEmpty) _monitoredKeys = {..._monitoredKeys, ...newlyEnabled};
-      if (revoked.isNotEmpty) _monitoredKeys = Set.from(_monitoredKeys)..removeAll(revoked);
+      if (newlyEnabled.isNotEmpty)
+        _monitoredKeys = {..._monitoredKeys, ...newlyEnabled};
+      if (revoked.isNotEmpty)
+        _monitoredKeys = Set.from(_monitoredKeys)..removeAll(revoked);
     });
     for (final k in newlyEnabled) {
       final slash = k.indexOf('/');
-      if (slash >= 0) await _storage.addNotifMonitored(k.substring(0, slash), k.substring(slash + 1));
+      if (slash >= 0)
+        await _storage.addNotifMonitored(
+            k.substring(0, slash), k.substring(slash + 1));
     }
     for (final k in revoked) {
       final slash = k.indexOf('/');
-      if (slash >= 0) await _storage.removeNotifMonitored(k.substring(0, slash), k.substring(slash + 1));
+      if (slash >= 0)
+        await _storage.removeNotifMonitored(
+            k.substring(0, slash), k.substring(slash + 1));
     }
   }
 
@@ -167,7 +188,8 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
       final b64 = prefs.getString('app_icon_v1_$pkg');
       if (b64 != null) cached[pkg] = base64Decode(b64);
     }
-    if (mounted && cached.isNotEmpty) setState(() => _iconCache = {..._iconCache, ...cached});
+    if (mounted && cached.isNotEmpty)
+      setState(() => _iconCache = {..._iconCache, ...cached});
 
     final missing = packages.where((p) => !cached.containsKey(p)).toSet();
     for (final pkg in missing) {
@@ -211,7 +233,8 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
     }
   }
 
-  Future<void> _toggle(String packageName, String serviceClass, String appName) async {
+  Future<void> _toggle(
+      String packageName, String serviceClass, String appName) async {
     final key = '$packageName/$serviceClass';
     final nowMonitored = !_monitoredKeys.contains(key);
     setState(() {
@@ -228,16 +251,16 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
     if (mounted) {
       final label = serviceClass.split('.').last;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(nowMonitored ? 'Now monitoring $label' : 'Stopped monitoring $label'),
+        content: Text(nowMonitored
+            ? 'Now monitoring $label'
+            : 'Stopped monitoring $label'),
         duration: const Duration(seconds: 2),
       ));
     }
   }
 
-  Future<void> _setGroupState(
-      String packageName,
-      List<({String serviceClass, String appName})> services,
-      int state) async {
+  Future<void> _setGroupState(String packageName,
+      List<({String serviceClass, String appName})> services, int state) async {
     if (state == 0) {
       setState(() {
         for (final s in services) {
@@ -255,7 +278,8 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
           .where((s) => _enabledKeys.contains('$packageName/${s.serviceClass}'))
           .toList();
       final alreadyMonitored = services
-          .where((s) => _monitoredKeys.contains('$packageName/${s.serviceClass}'))
+          .where(
+              (s) => _monitoredKeys.contains('$packageName/${s.serviceClass}'))
           .toList();
       if (applicable.isEmpty && alreadyMonitored.isEmpty) {
         await _showPermissionRequiredDialog(
@@ -283,7 +307,8 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
         if (state == 1) {
           await _storage.setNotifListenerNotifOff(packageName, s.serviceClass);
         } else {
-          await _storage.clearNotifListenerNotifOff(packageName, s.serviceClass);
+          await _storage.clearNotifListenerNotifOff(
+              packageName, s.serviceClass);
         }
       }
     }
@@ -302,7 +327,8 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
           FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
               child: const Text('Open Settings')),
@@ -353,7 +379,8 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
       }
       final label = serviceClass.split('.').last;
       final title = 'Notification listener issue: $label ($packageName)';
-      await DiagnosticsService.openGitHubIssue(context, title: title, body: body);
+      await DiagnosticsService.openGitHubIssue(context,
+          title: title, body: body);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -412,7 +439,8 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
         loadingOpen = false;
       }
       final title = 'Notification listeners issue: $appName ($packageName)';
-      await DiagnosticsService.openGitHubIssue(context, title: title, body: body);
+      await DiagnosticsService.openGitHubIssue(context,
+          title: title, body: body);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -437,20 +465,24 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
     return groups;
   }
 
-  int _groupState(String pkg, List<({String serviceClass, String appName})> services) {
-    final monitoredCount =
-        services.where((s) => _monitoredKeys.contains('$pkg/${s.serviceClass}')).length;
+  int _groupState(
+      String pkg, List<({String serviceClass, String appName})> services) {
+    final monitoredCount = services
+        .where((s) => _monitoredKeys.contains('$pkg/${s.serviceClass}'))
+        .length;
     if (monitoredCount == 0) return 0;
-    final monitoredSvcs =
-        services.where((s) => _monitoredKeys.contains('$pkg/${s.serviceClass}'));
-    final allNotifOff =
-        monitoredSvcs.every((s) => _notifOffKeys.contains('$pkg/${s.serviceClass}'));
+    final monitoredSvcs = services
+        .where((s) => _monitoredKeys.contains('$pkg/${s.serviceClass}'));
+    final allNotifOff = monitoredSvcs
+        .every((s) => _notifOffKeys.contains('$pkg/${s.serviceClass}'));
     return allNotifOff ? 1 : 2;
   }
 
-  bool _hasIssue(String pkg, List<({String serviceClass, String appName})> services) {
-    final monitoredCount =
-        services.where((s) => _monitoredKeys.contains('$pkg/${s.serviceClass}')).length;
+  bool _hasIssue(
+      String pkg, List<({String serviceClass, String appName})> services) {
+    final monitoredCount = services
+        .where((s) => _monitoredKeys.contains('$pkg/${s.serviceClass}'))
+        .length;
     final activeMonitored = services
         .where((s) =>
             _monitoredKeys.contains('$pkg/${s.serviceClass}') &&
@@ -459,9 +491,11 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
     return monitoredCount > 0 && activeMonitored < monitoredCount;
   }
 
-  String _subtitle(String pkg, List<({String serviceClass, String appName})> services) {
-    final monitoredCount =
-        services.where((s) => _monitoredKeys.contains('$pkg/${s.serviceClass}')).length;
+  String _subtitle(
+      String pkg, List<({String serviceClass, String appName})> services) {
+    final monitoredCount = services
+        .where((s) => _monitoredKeys.contains('$pkg/${s.serviceClass}'))
+        .length;
     if (monitoredCount == 0) return 'Not monitored';
     return '$monitoredCount of ${services.length} monitored';
   }
@@ -487,7 +521,8 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
         children: [
           Text(
             svc.serviceClass,
-            style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
+            style: TextStyle(
+                fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
           ),
           const SizedBox(height: 3),
           _StatusChip(enabled: enabled),
@@ -505,13 +540,14 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
                 value: monitored,
                 thumbColor: WidgetStateProperty.resolveWith(
                     (s) => s.contains(WidgetState.selected) ? appColor : null),
-                trackColor: WidgetStateProperty.resolveWith(
-                    (s) => s.contains(WidgetState.selected)
+                trackColor: WidgetStateProperty.resolveWith((s) =>
+                    s.contains(WidgetState.selected)
                         ? appColor?.withValues(alpha: 0.5)
                         : null),
                 onChanged: (_) {
                   if (!enabled) {
-                    _showPermissionRequiredDialog(pkg, svc.serviceClass, svc.appName);
+                    _showPermissionRequiredDialog(
+                        pkg, svc.serviceClass, svc.appName);
                   } else {
                     _toggle(pkg, svc.serviceClass, svc.appName);
                   }
@@ -520,7 +556,8 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
             ),
           ),
           PopupMenuButton<String>(
-            icon: Icon(Icons.more_vert, size: 18, color: theme.colorScheme.onSurfaceVariant),
+            icon: Icon(Icons.more_vert,
+                size: 18, color: theme.colorScheme.onSurfaceVariant),
             padding: EdgeInsets.zero,
             onSelected: (v) {
               if (v == 'history') {
@@ -597,7 +634,10 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
             if (mounted) setState(() => _permInfoDismissed = true);
           },
           icon: Icons.open_in_browser_outlined,
-          color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.4),
+          color: Theme.of(context)
+              .colorScheme
+              .primaryContainer
+              .withValues(alpha: 0.4),
           textColor: Theme.of(context).colorScheme.onSecondaryContainer,
           pageIndex: 2,
           pageController: widget.pageController,
@@ -605,28 +645,34 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
         PageBanner(
           pref: 'notif_revoke_banner_dismissed',
           dismissed: _revokeBannerDismissed,
-          text: 'Disabling monitoring here does not revoke the app\'s Android notification listener permission. '
+          text:
+              'Disabling monitoring here does not revoke the app\'s Android notification listener permission. '
               'To revoke, go to Android Settings.',
           icon: Icons.info,
           onDismiss: () async {
             if (mounted) setState(() => _revokeBannerDismissed = true);
           },
-          color: Theme.of(context).colorScheme.tertiaryContainer.withValues(alpha: 0.45),
+          color: Theme.of(context)
+              .colorScheme
+              .tertiaryContainer
+              .withValues(alpha: 0.45),
           textColor: Theme.of(context).colorScheme.onTertiaryContainer,
           pageIndex: 2,
           pageController: widget.pageController,
         ),
         Expanded(
           child: pkgs.isEmpty
-              ? const Center(child: Text('No third-party notification listeners found.'))
+              ? const Center(
+                  child: Text('No third-party notification listeners found.'))
               : CustomScrollView(
                   slivers: [
                     for (final pkg in pkgs) ...[
                       AppGroupCard(
                         key: ValueKey(pkg),
                         expanded: _expandedGroups[pkg] ?? false,
-                        onToggleExpanded: () => setState(
-                            () => _expandedGroups[pkg] = !(_expandedGroups[pkg] ?? false)),
+                        onToggleExpanded: () => setState(() =>
+                            _expandedGroups[pkg] =
+                                !(_expandedGroups[pkg] ?? false)),
                         packageName: pkg,
                         appName: groups[pkg]!.first.appName,
                         iconBytes: _iconCache[pkg],
@@ -675,9 +721,11 @@ class _NotificationMonitorScreenState extends State<NotificationMonitorScreen>
                               ),
                             );
                           } else if (v == 'manage_permission') {
-                            _system.openNotificationListenerSettings(packageName: pkg);
+                            _system.openNotificationListenerSettings(
+                                packageName: pkg);
                           } else if (v == 'report_issue') {
-                            _reportAppIssue(pkg, groups[pkg]!.first.appName, groups[pkg]!);
+                            _reportAppIssue(
+                                pkg, groups[pkg]!.first.appName, groups[pkg]!);
                           }
                         },
                         children: [
@@ -706,7 +754,8 @@ class _StatusChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: (enabled ? activeColor : cs.surfaceContainerHighest).withValues(alpha: 0.2),
+        color: (enabled ? activeColor : cs.surfaceContainerHighest)
+            .withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [

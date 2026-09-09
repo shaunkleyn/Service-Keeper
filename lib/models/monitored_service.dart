@@ -1,10 +1,10 @@
 import 'dart:convert';
 
 enum ServiceState {
-  unknown,  // never checked
-  running,  // confirmed running
-  crashed,  // was running, now unexpectedly not running (monitoring enabled)
-  stopped,  // not running because monitoring is disabled
+  unknown, // never checked
+  running, // confirmed running
+  crashed, // was running, now unexpectedly not running (monitoring enabled)
+  stopped, // not running because monitoring is disabled
 }
 
 class MonitoredService {
@@ -165,8 +165,7 @@ class RunningService {
     this.permission = '',
   });
 
-  bool get isJobService =>
-      permission == 'android.permission.BIND_JOB_SERVICE';
+  bool get isJobService => permission == 'android.permission.BIND_JOB_SERVICE';
 
   String get displayServiceClass {
     if (serviceClass.startsWith(packageName)) {

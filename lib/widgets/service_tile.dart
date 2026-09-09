@@ -103,7 +103,8 @@ class _ServiceTileState extends State<ServiceTile> {
 
   String _intervalLabel() {
     final minutes = widget.effectiveIntervalMinutes;
-    final suffix = widget.service.customIntervalMinutes != null ? ' (custom)' : '';
+    final suffix =
+        widget.service.customIntervalMinutes != null ? ' (custom)' : '';
     if (minutes < 60) return 'Every ${minutes}m$suffix';
     return 'Every ${minutes ~/ 60}h$suffix';
   }
@@ -122,7 +123,8 @@ class _ServiceTileState extends State<ServiceTile> {
     if (!widget.service.enabled) return '';
     if (widget.service.lastChecked == null) return 'Pending first check';
     final elapsed = now.difference(widget.service.lastChecked!);
-    final remaining = Duration(minutes: widget.effectiveIntervalMinutes) - elapsed;
+    final remaining =
+        Duration(minutes: widget.effectiveIntervalMinutes) - elapsed;
     if (remaining.inSeconds <= 0) return 'Check pending';
     final m = remaining.inMinutes;
     final s = remaining.inSeconds % 60;
@@ -136,7 +138,8 @@ class _ServiceTileState extends State<ServiceTile> {
     final theme = Theme.of(context);
     final statusColor = _statusColor(context);
     final progress = _progressValue(widget.now);
-    final nextLabel = widget.globalIntervalEnabled ? _nextCheckLabel(widget.now) : '';
+    final nextLabel =
+        widget.globalIntervalEnabled ? _nextCheckLabel(widget.now) : '';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -161,7 +164,8 @@ class _ServiceTileState extends State<ServiceTile> {
                               widget.service.displayLabel.isNotEmpty
                                   ? widget.service.displayLabel[0].toUpperCase()
                                   : '?',
-                              style: TextStyle(color: theme.colorScheme.onPrimaryContainer),
+                              style: TextStyle(
+                                  color: theme.colorScheme.onPrimaryContainer),
                             ),
                           ),
                     Positioned(
@@ -173,7 +177,8 @@ class _ServiceTileState extends State<ServiceTile> {
                         decoration: BoxDecoration(
                           color: statusColor,
                           shape: BoxShape.circle,
-                          border: Border.all(color: theme.colorScheme.surface, width: 2),
+                          border: Border.all(
+                              color: theme.colorScheme.surface, width: 2),
                         ),
                       ),
                     ),
@@ -188,7 +193,8 @@ class _ServiceTileState extends State<ServiceTile> {
                   children: [
                     Text(
                       widget.service.displayLabel,
-                      style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                      style: theme.textTheme.titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -201,7 +207,8 @@ class _ServiceTileState extends State<ServiceTile> {
                     const SizedBox(height: 4),
                     Row(children: [
                       if (widget.globalIntervalEnabled) ...[
-                        Icon(Icons.schedule, size: 12, color: theme.colorScheme.primary),
+                        Icon(Icons.schedule,
+                            size: 12, color: theme.colorScheme.primary),
                         const SizedBox(width: 4),
                         Text(
                           _intervalLabel(),
@@ -215,7 +222,8 @@ class _ServiceTileState extends State<ServiceTile> {
                         const SizedBox(width: 12),
                       ],
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
                           color: statusColor.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(4),
@@ -237,7 +245,8 @@ class _ServiceTileState extends State<ServiceTile> {
                         size: 16,
                         color: widget.service.notificationsEnabled
                             ? (widget.accentColor ?? theme.colorScheme.primary)
-                            : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.45),
+                            : theme.colorScheme.onSurfaceVariant
+                                .withValues(alpha: 0.45),
                       ),
                       if (widget.service.appRestartEnabled) ...[
                         const SizedBox(width: 5),
@@ -245,7 +254,8 @@ class _ServiceTileState extends State<ServiceTile> {
                           Icons.open_in_browser,
                           semanticLabel: 'App restart enabled',
                           size: 16,
-                          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                          color: theme.colorScheme.onSurfaceVariant
+                              .withValues(alpha: 0.6),
                         ),
                       ],
                     ]),
@@ -253,14 +263,16 @@ class _ServiceTileState extends State<ServiceTile> {
                       const SizedBox(height: 2),
                       Text(
                         'Last checked: ${_formatTime(widget.service.lastChecked!)}',
-                        style: theme.textTheme.bodySmall?.copyWith(fontSize: 10),
+                        style:
+                            theme.textTheme.bodySmall?.copyWith(fontSize: 10),
                       ),
                     ],
                     if (widget.service.lastRestarted != null) ...[
                       const SizedBox(height: 2),
                       Text(
                         'Last restarted: ${_formatTime(widget.service.lastRestarted!)}',
-                        style: theme.textTheme.bodySmall?.copyWith(fontSize: 10),
+                        style:
+                            theme.textTheme.bodySmall?.copyWith(fontSize: 10),
                       ),
                     ],
                     if (nextLabel.isNotEmpty) ...[
@@ -281,14 +293,16 @@ class _ServiceTileState extends State<ServiceTile> {
                         children: [
                           Icon(Icons.info_outline,
                               size: 11,
-                              color: theme.colorScheme.error.withValues(alpha: 0.8)),
+                              color: theme.colorScheme.error
+                                  .withValues(alpha: 0.8)),
                           const SizedBox(width: 3),
                           Flexible(
                             child: Text(
                               'Enable app restart fallback in App settings to recover this service.',
                               style: theme.textTheme.bodySmall?.copyWith(
                                 fontSize: 10,
-                                color: theme.colorScheme.error.withValues(alpha: 0.8),
+                                color: theme.colorScheme.error
+                                    .withValues(alpha: 0.8),
                                 fontStyle: FontStyle.italic,
                               ),
                             ),
@@ -307,12 +321,15 @@ class _ServiceTileState extends State<ServiceTile> {
                     alignment: Alignment.centerRight,
                     child: Switch(
                       value: widget.service.enabled,
-                      onChanged: widget.onToggle != null ? (_) => widget.onToggle!() : null,
+                      onChanged: widget.onToggle != null
+                          ? (_) => widget.onToggle!()
+                          : null,
                       thumbColor: widget.accentColor == null
                           ? null
                           : WidgetStateProperty.resolveWith((states) {
                               if (states.contains(WidgetState.selected)) {
-                                return ThemeData.estimateBrightnessForColor(widget.accentColor!) ==
+                                return ThemeData.estimateBrightnessForColor(
+                                            widget.accentColor!) ==
                                         Brightness.dark
                                     ? Colors.white
                                     : Colors.black87;
@@ -334,14 +351,18 @@ class _ServiceTileState extends State<ServiceTile> {
                       if (v == 'configure') widget.onConfigure?.call();
                       if (v == 'restart') widget.onRestartNow?.call();
                       if (v == 'history') widget.onViewHistory?.call();
-                      if (v == 'toggle_notifications') widget.onToggleNotifications?.call();
+                      if (v == 'toggle_notifications')
+                        widget.onToggleNotifications?.call();
                       if (v == 'report_issue') widget.onReportIssue?.call();
                       if (v == 'remove') widget.onRemove?.call();
                     },
                     itemBuilder: (_) => [
-                      const PopupMenuItem(value: 'configure', child: Text('Configure')),
-                      const PopupMenuItem(value: 'restart', child: Text('Restart now')),
-                      const PopupMenuItem(value: 'history', child: Text('View history')),
+                      const PopupMenuItem(
+                          value: 'configure', child: Text('Configure')),
+                      const PopupMenuItem(
+                          value: 'restart', child: Text('Restart now')),
+                      const PopupMenuItem(
+                          value: 'history', child: Text('View history')),
                       PopupMenuItem(
                         value: 'toggle_notifications',
                         child: Row(
@@ -374,7 +395,8 @@ class _ServiceTileState extends State<ServiceTile> {
                       ),
                       const PopupMenuItem(
                           value: 'remove',
-                          child: Text('Remove', style: TextStyle(color: Colors.red))),
+                          child: Text('Remove',
+                              style: TextStyle(color: Colors.red))),
                     ],
                   ),
                 ],
@@ -390,7 +412,8 @@ class _ServiceTileState extends State<ServiceTile> {
               duration: const Duration(milliseconds: 350),
               curve: Curves.easeOutCubic,
               builder: (context, animatedProgress, _) {
-                final baseColor = widget.accentColor ?? theme.colorScheme.primary;
+                final baseColor =
+                    widget.accentColor ?? theme.colorScheme.primary;
                 final activeColor = animatedProgress < 0.15
                     ? theme.colorScheme.error
                     : animatedProgress < 0.35

@@ -185,23 +185,24 @@ class _AppGroupCardHeaderDelegate extends SliverPersistentHeaderDelegate {
   double get maxExtent => 80;
 
   @override
-bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
-    expanded != old.expanded ||
-    packageName != old.packageName ||
-    appName != old.appName ||
-    iconBytes != old.iconBytes ||
-    appColor != old.appColor ||
-    subtitle != old.subtitle ||
-    groupState != old.groupState ||
-    hasIssue != old.hasIssue ||
-    icon != old.icon ||
-    isInSelectionMode != old.isInSelectionMode ||
-    isSelected != old.isSelected ||
-    isPartiallySelected != old.isPartiallySelected ||
-    isRestoredMissing != old.isRestoredMissing;
+  bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
+      expanded != old.expanded ||
+      packageName != old.packageName ||
+      appName != old.appName ||
+      iconBytes != old.iconBytes ||
+      appColor != old.appColor ||
+      subtitle != old.subtitle ||
+      groupState != old.groupState ||
+      hasIssue != old.hasIssue ||
+      icon != old.icon ||
+      isInSelectionMode != old.isInSelectionMode ||
+      isSelected != old.isSelected ||
+      isPartiallySelected != old.isPartiallySelected ||
+      isRestoredMissing != old.isRestoredMissing;
 
   @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
     final theme = Theme.of(context);
 
     final Color? headerFg = appColor == null
@@ -282,7 +283,8 @@ bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
                             : (isSelected
                                 ? Icon(Icons.check_box, color: fg, size: 20)
                                 : Icon(Icons.check_box_outline_blank,
-                                    color: fg.withValues(alpha: 0.5), size: 20)),
+                                    color: fg.withValues(alpha: 0.5),
+                                    size: 20)),
                       ),
                     avatar,
                     const SizedBox(width: 12),
@@ -323,8 +325,7 @@ bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Icon(Icons.warning_amber_rounded,
-                                      size: 11,
-                                      color: theme.colorScheme.error),
+                                      size: 11, color: theme.colorScheme.error),
                                   const SizedBox(width: 3),
                                   Text(
                                     'App not installed',
@@ -360,7 +361,8 @@ bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
     );
   }
 
-  Widget _buildToggle(ThemeData theme, Color fg, Color bodyBg, {Color? appColor}) {
+  Widget _buildToggle(ThemeData theme, Color fg, Color bodyBg,
+      {Color? appColor}) {
     final cs = theme.colorScheme;
     final headerBg = appColor ?? cs.surfaceContainerLow;
     return _GroupToggle(
@@ -369,7 +371,8 @@ bool shouldRebuild(_AppGroupCardHeaderDelegate old) =>
       appColor: appColor,
       bodyBg: bodyBg,
       fg: fg,
-      darkHeader: ThemeData.estimateBrightnessForColor(headerBg) == Brightness.dark,
+      darkHeader:
+          ThemeData.estimateBrightnessForColor(headerBg) == Brightness.dark,
       cs: cs,
       onChanged: onGroupStateChanged!,
     );
@@ -396,7 +399,8 @@ class _ExpandChevronState extends State<_ExpandChevron>
   );
 
   late final Animation<double> _turns = Tween<double>(begin: 0, end: 0.5)
-      .animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOutCubic));
+      .animate(
+          CurvedAnimation(parent: _controller, curve: Curves.easeInOutCubic));
 
   @override
   void didUpdateWidget(covariant _ExpandChevron oldWidget) {
@@ -460,7 +464,8 @@ class _GroupToggleState extends State<_GroupToggle> {
 
   int get _current => _dragState ?? widget.value;
 
-  double _thumbSize(int state) => _height - (state == 0 ? 12.0 : 8.0 * _trackPad);
+  double _thumbSize(int state) =>
+      _height - (state == 0 ? 12.0 : 8.0 * _trackPad);
 
   double _thumbLeft(int state) {
     final ts = _thumbSize(state);
@@ -468,7 +473,8 @@ class _GroupToggleState extends State<_GroupToggle> {
   }
 
   int _slotAt(double localX) {
-    final inner = (localX - _trackPad).clamp(0.0, _totalWidth - 2 * _trackPad - 0.001);
+    final inner =
+        (localX - _trackPad).clamp(0.0, _totalWidth - 2 * _trackPad - 0.001);
     return (inner / _slotWidth).floor().clamp(0, 2);
   }
 
@@ -527,7 +533,11 @@ class _GroupToggleState extends State<_GroupToggle> {
     final thumbLeft = _thumbLeft(current);
     final dur = dragging ? Duration.zero : const Duration(milliseconds: 250);
 
-    const stateLabels = ['Disabled', 'Monitoring', 'Monitoring and Notifications'];
+    const stateLabels = [
+      'Disabled',
+      'Monitoring',
+      'Monitoring and Notifications'
+    ];
 
     return Semantics(
       label: 'Service monitoring',
@@ -539,11 +549,13 @@ class _GroupToggleState extends State<_GroupToggle> {
       child: Focus(
         onKeyEvent: (node, event) {
           if (event is KeyDownEvent) {
-            if (event.logicalKey == LogicalKeyboardKey.arrowRight && current < 2) {
+            if (event.logicalKey == LogicalKeyboardKey.arrowRight &&
+                current < 2) {
               widget.onChanged(current + 1);
               return KeyEventResult.handled;
             }
-            if (event.logicalKey == LogicalKeyboardKey.arrowLeft && current > 0) {
+            if (event.logicalKey == LogicalKeyboardKey.arrowLeft &&
+                current > 0) {
               widget.onChanged(current - 1);
               return KeyEventResult.handled;
             }
@@ -556,110 +568,116 @@ class _GroupToggleState extends State<_GroupToggle> {
           return KeyEventResult.ignored;
         },
         child: GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      // Tap: determine slot from touch position, commit immediately.
-      onTapUp: (d) => widget.onChanged(_slotAt(d.localPosition.dx)),
-      // Drag: snap thumb to each slot as finger moves, commit on release.
-      onHorizontalDragUpdate: (d) {
-        final s = _slotAt(d.localPosition.dx);
-        if (s != _dragState) setState(() => _dragState = s);
-      },
-      onHorizontalDragEnd: (_) {
-        final s = _dragState ?? widget.value;
-        setState(() => _dragState = null);
-        widget.onChanged(s);
-      },
-      onHorizontalDragCancel: () => setState(() => _dragState = null),
-      child: SizedBox(
-        width: _totalWidth,
-        height: _height,
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: trackBg,
-                  borderRadius: BorderRadius.circular(_height / 2),
-                  border: Border.all(color: borderColor, width: 1.5),
-                ),
-              ),
-            ),
-            Positioned(
-              left: _trackPad,
-              top: _trackPad,
-              bottom: _trackPad,
-              child: AnimatedContainer(
-                duration: dur,
-                curve: Curves.easeInOut,
-                width: _slotWidth * (current + 1),
-                decoration: BoxDecoration(
-                  color: pillColor,
-                  borderRadius: BorderRadius.circular(30),
-                ),
-              ),
-            ),
-            AnimatedPositioned(
-              duration: dur,
-              curve: Curves.easeInOut,
-              left: thumbLeft,
-              top: _height / 2 - thumbSize / 2,
-              child: AnimatedContainer(
-                duration: dur,
-                width: thumbSize,
-                height: thumbSize,
-                decoration: BoxDecoration(
-                  color: current == 0
-                      ? (colorful
-                          ? widget.bodyBg
-                          : (darkMode ? const Color(0xFF4E5057) : Colors.black54))
-                      : (colorful
-                          ? widget.appColor!
-                          : (darkMode ? cs.onPrimary : Colors.white)),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: current > 0
-                          ? Colors.black.withValues(alpha: 0.22)
-                          : Colors.transparent,
-                      blurRadius: current == 0 ? 0 : 4,
-                      spreadRadius: current == 0 ? 0 : 1,
-                      offset: const Offset(0, 1),
+          behavior: HitTestBehavior.opaque,
+          // Tap: determine slot from touch position, commit immediately.
+          onTapUp: (d) => widget.onChanged(_slotAt(d.localPosition.dx)),
+          // Drag: snap thumb to each slot as finger moves, commit on release.
+          onHorizontalDragUpdate: (d) {
+            final s = _slotAt(d.localPosition.dx);
+            if (s != _dragState) setState(() => _dragState = s);
+          },
+          onHorizontalDragEnd: (_) {
+            final s = _dragState ?? widget.value;
+            setState(() => _dragState = null);
+            widget.onChanged(s);
+          },
+          onHorizontalDragCancel: () => setState(() => _dragState = null),
+          child: SizedBox(
+            width: _totalWidth,
+            height: _height,
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: trackBg,
+                      borderRadius: BorderRadius.circular(_height / 2),
+                      border: Border.all(color: borderColor, width: 1.5),
                     ),
-                  ],
-                ),
-              ),
-            ),
-            Positioned(
-              left: _trackPad,
-              top: 0,
-              right: _trackPad,
-              bottom: 0,
-              child: Row(
-                children: List.generate(3, (i) => SizedBox(
-                  width: _slotWidth,
-                  child: Icon(
-                    icons[i],
-                    size: 15,
-                    color: (current == 0 && i == 0)
-                        ? (cs.brightness == Brightness.dark
-                            ? const Color(0xFF80828A)
-                            : Colors.black45)
-                        : (i < current || i == 0
-                            ? onPill
-                            : (i == current
-                                ? (colorful && current >= 1
-                                    ? (ThemeData.estimateBrightnessForColor(widget.appColor!) == Brightness.dark
-                                        ? Colors.white
-                                        : Colors.black87)
-                                    : pillColor)
-                                : dimColor)),
                   ),
-                )),
-              ),
+                ),
+                Positioned(
+                  left: _trackPad,
+                  top: _trackPad,
+                  bottom: _trackPad,
+                  child: AnimatedContainer(
+                    duration: dur,
+                    curve: Curves.easeInOut,
+                    width: _slotWidth * (current + 1),
+                    decoration: BoxDecoration(
+                      color: pillColor,
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                  ),
+                ),
+                AnimatedPositioned(
+                  duration: dur,
+                  curve: Curves.easeInOut,
+                  left: thumbLeft,
+                  top: _height / 2 - thumbSize / 2,
+                  child: AnimatedContainer(
+                    duration: dur,
+                    width: thumbSize,
+                    height: thumbSize,
+                    decoration: BoxDecoration(
+                      color: current == 0
+                          ? (colorful
+                              ? widget.bodyBg
+                              : (darkMode
+                                  ? const Color(0xFF4E5057)
+                                  : Colors.black54))
+                          : (colorful
+                              ? widget.appColor!
+                              : (darkMode ? cs.onPrimary : Colors.white)),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: current > 0
+                              ? Colors.black.withValues(alpha: 0.22)
+                              : Colors.transparent,
+                          blurRadius: current == 0 ? 0 : 4,
+                          spreadRadius: current == 0 ? 0 : 1,
+                          offset: const Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: _trackPad,
+                  top: 0,
+                  right: _trackPad,
+                  bottom: 0,
+                  child: Row(
+                    children: List.generate(
+                        3,
+                        (i) => SizedBox(
+                              width: _slotWidth,
+                              child: Icon(
+                                icons[i],
+                                size: 15,
+                                color: (current == 0 && i == 0)
+                                    ? (cs.brightness == Brightness.dark
+                                        ? const Color(0xFF80828A)
+                                        : Colors.black45)
+                                    : (i < current || i == 0
+                                        ? onPill
+                                        : (i == current
+                                            ? (colorful && current >= 1
+                                                ? (ThemeData.estimateBrightnessForColor(
+                                                            widget.appColor!) ==
+                                                        Brightness.dark
+                                                    ? Colors.white
+                                                    : Colors.black87)
+                                                : pillColor)
+                                            : dimColor)),
+                              ),
+                            )),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
         ),
       ),
     );

@@ -1,11 +1,13 @@
 import 'package:flutter/services.dart';
 
 class SystemService {
-  static const _channel = MethodChannel('com.shaunkleyn.service_keeper/shizuku');
+  static const _channel =
+      MethodChannel('com.shaunkleyn.service_keeper/shizuku');
 
   Future<bool> isBatteryOptimizationExempt() async {
     try {
-      return await _channel.invokeMethod<bool>('isBatteryOptimizationExempt') ?? false;
+      return await _channel.invokeMethod<bool>('isBatteryOptimizationExempt') ??
+          false;
     } on PlatformException {
       return false;
     }
@@ -21,7 +23,8 @@ class SystemService {
 
   Future<void> startKeeperService(int serviceCount) async {
     try {
-      await _channel.invokeMethod('startKeeperService', {'count': serviceCount});
+      await _channel
+          .invokeMethod('startKeeperService', {'count': serviceCount});
     } on PlatformException {
       // ignore
     }
@@ -81,7 +84,9 @@ class SystemService {
 
   Future<Set<String>> getEnabledAccessibilityServices() async {
     try {
-      final raw = await _channel.invokeMethod<String>('getEnabledAccessibilityServices') ?? '';
+      final raw = await _channel
+              .invokeMethod<String>('getEnabledAccessibilityServices') ??
+          '';
       if (raw.isEmpty) return {};
       return raw.split(':').map((e) {
         final slash = e.indexOf('/');
@@ -98,7 +103,9 @@ class SystemService {
 
   Future<Set<String>> getEnabledNotificationListeners() async {
     try {
-      final raw = await _channel.invokeMethod<String>('getEnabledNotificationListeners') ?? '';
+      final raw = await _channel
+              .invokeMethod<String>('getEnabledNotificationListeners') ??
+          '';
       if (raw.isEmpty) return {};
       return raw.split(':').map((e) {
         final slash = e.indexOf('/');
@@ -115,7 +122,8 @@ class SystemService {
 
   Future<bool> isNotificationPermissionGranted() async {
     try {
-      return await _channel.invokeMethod<bool>('checkNotificationPermission') ?? true;
+      return await _channel.invokeMethod<bool>('checkNotificationPermission') ??
+          true;
     } on PlatformException {
       return true;
     }
@@ -123,7 +131,9 @@ class SystemService {
 
   Future<bool> requestNotificationPermission() async {
     try {
-      return await _channel.invokeMethod<bool>('requestNotificationPermission') ?? false;
+      return await _channel
+              .invokeMethod<bool>('requestNotificationPermission') ??
+          false;
     } on PlatformException {
       return false;
     }
@@ -137,7 +147,8 @@ class SystemService {
     }
   }
 
-  Future<void> openAccessibilitySettings({String? packageName, String? serviceClass}) async {
+  Future<void> openAccessibilitySettings(
+      {String? packageName, String? serviceClass}) async {
     try {
       await _channel.invokeMethod('openAccessibilitySettings', {
         if (packageName != null) 'packageName': packageName,
@@ -148,7 +159,8 @@ class SystemService {
     }
   }
 
-  Future<void> openNotificationListenerSettings({String? packageName, String? serviceClass}) async {
+  Future<void> openNotificationListenerSettings(
+      {String? packageName, String? serviceClass}) async {
     try {
       await _channel.invokeMethod('openNotificationListenerSettings', {
         if (packageName != null) 'packageName': packageName,
